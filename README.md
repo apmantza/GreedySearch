@@ -24,7 +24,7 @@ Claude's training has a cutoff. For current library APIs, new framework releases
 ## Install
 
 ```bash
-git clone https://github.com/your-username/GreedySearch
+git clone https://github.com/apmantza/GreedySearch
 cd GreedySearch
 node setup.mjs
 ```
@@ -102,7 +102,7 @@ node ~/.claude/skills/greedysearch/launch.mjs --kill
 1. `launch.mjs` starts a dedicated Chrome instance with `--disable-features=DevToolsPrivacyUI` — no permission dialogs, separate profile so it never touches your main Chrome session
 2. `search.mjs` opens one tab per engine, runs all extractors in parallel
 3. Each extractor navigates to the engine, submits the query, polls for stream completion, and returns the answer as JSON
-4. Chrome is controlled via the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) through [chrome-cdp-skill](https://github.com/pasky/chrome-cdp-skill)
+4. Chrome is controlled via the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) through **[chrome-cdp-skill](https://github.com/pasky/chrome-cdp-skill)** — a reusable CDP toolkit for Claude Code skills, also installed automatically by `setup.mjs`
 
 ## File structure
 
