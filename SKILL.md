@@ -46,16 +46,18 @@ Output: `{ perplexity: { answer, sources }, bing: { answer, sources }, google: {
 
 ## Engine routing
 
-| Use case | Engine |
-|----------|--------|
-| Research, "explain X" | `all` |
-| Current library/API syntax | `all` |
-| Error / stack trace diagnosis | `b` or `all` |
-| Dependency selection, "best X in 2025" | `all` |
-| Breaking changes, version diffs | `p` or `all` |
-| Quick factual lookup | `g` |
-| Architecture validation | `all` |
-| Security / CVEs | `p` |
+| Use case | Best engine | Why |
+|----------|-------------|-----|
+| Error / stack trace | `b` | Copilot gives concrete fix + code |
+| How to implement X | `b` | Opinionated, produces working snippets |
+| What is X / concept | `g` | Factual, surfaces canonical docs |
+| Official docs / API ref | `g` | Best at finding MDN, official sites, SO |
+| Breaking changes / release notes | `p` | Aggressive real-time retrieval, cites sources |
+| Research needing citations | `p` | Answer-first with verifiable sources |
+| Security / CVEs | `p` | Finds actual advisories |
+| Dependency / tool selection | `all` | Need community consensus across sources |
+| Architecture validation | `all` | Multiple perspectives reduce bias |
+| Anything uncertain | `all` | Where they agree = high confidence |
 
 ## Trigger conditions
 

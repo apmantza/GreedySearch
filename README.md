@@ -78,10 +78,10 @@ node ~/.claude/skills/greedysearch/launch.mjs --kill
 
 | Alias | Engine | Best for |
 |-------|--------|----------|
-| `p` | Perplexity | Research, citations, breaking changes |
-| `b` | Bing Copilot | Error diagnosis, code examples |
-| `g` | Google AI | Factual lookups, official docs |
-| `all` | All three | Everything else |
+| `p` | Perplexity | Breaking changes, release notes, research with citations, CVEs |
+| `b` | Bing Copilot | Error diagnosis, "how to implement X", code examples |
+| `g` | Google AI | "What is X", official docs, API references, canonical sources |
+| `all` | All three | Dependency selection, architecture validation, anything uncertain |
 
 ## Output format
 

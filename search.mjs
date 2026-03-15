@@ -45,6 +45,22 @@ const ENGINES = {
 
 const ALL_ENGINES = ['perplexity', 'bing', 'google']; // stackoverflow: disabled until polling fix
 
+const ENGINE_DOMAINS = {
+  perplexity: 'perplexity.ai',
+  bing:       'copilot.microsoft.com',
+  google:     'google.com',
+  stackoverflow: 'stackoverflow.com',
+};
+
+function getTabFromCache(engine) {
+  try {
+    if (!existsSync(PAGES_CACHE)) return null;
+    const pages = JSON.parse(readFileSync(PAGES_CACHE, 'utf8'));
+    const found = pages.find(p => p.url.includes(ENGINE_DOMAINS[engine]));
+    return found ? found.targetId.slice(0, 8) : null;
+  } catch { return null; }
+}
+
 function cdp(args, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
     const proc = spawn('node', [CDP, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -145,25 +161,38 @@ async function main() {
   if (engine === 'all') {
     await cdp(['list']); // refresh pages cache
 
-    // Open tabs sequentially (nav+submit one at a time) to avoid resource contention
-    // on a fresh Chrome profile. Each extractor handles its own nav+submit+wait.
-    // Reuse the existing blank tab Chrome launches with, then open new tabs for the rest.
+    // Assign tabs: reuse existing engine tabs from cache, open new ones only where needed.
+    // Track opened tabs separately so we only close what we created.
     const tabs = [];
-    tabs.push(await getOrReuseBlankTab());
-    for (let i = 1; i < ALL_ENGINES.length; i++) {
-      await new Promise(r => setTimeout(r, 500)); // small gap between tab opens
-      tabs.push(await openNewTab());
+    const openedTabs = [];
+    let blankReused = false;
+
+    for (const e of ALL_ENGINES) {
+      const existing = getTabFromCache(e);
+      if (existing) {
+        tabs.push(existing);
+      } else if (!blankReused) {
+        const tab = await getOrReuseBlankTab();
+        tabs.push(tab);
+        openedTabs.push(tab);
+        blankReused = true;
+      } else {
+        await new Promise(r => setTimeout(r, 500));
+        const tab = await openNewTab();
+        tabs.push(tab);
+        openedTabs.push(tab);
+      }
     }
 
-    // All tabs open — now run extractors in parallel (they nav+submit+wait independently)
+    // All tabs assigned — run extractors in parallel
     const results = await Promise.allSettled(
       ALL_ENGINES.map((e, i) =>
         runExtractor(ENGINES[e], query, tabs[i], short).then(r => ({ engine: e, ...r }))
       )
     );
 
-    // Close the tabs we opened
-    await Promise.allSettled(tabs.map(closeTab));
+    // Close only tabs we opened (not pre-existing ones)
+    await Promise.allSettled(openedTabs.map(closeTab));
 
     const out = {};
     for (let i = 0; i < results.length; i++) {
