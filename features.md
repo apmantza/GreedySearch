@@ -21,12 +21,12 @@ SO is disabled (`stackoverflow-ai.mjs` times out in `all` mode and standalone).
 It's the highest-signal source for coding questions — real developer answers, not AI summaries.
 **Fix:** proper debug session; the submit works manually, the issue is in the polling or timing.
 
-## 4. `--out <file>` flag — write results to disk
+## 4. `--out <file>` flag — write results to disk ← IN PROGRESS
 Multi-search sessions accumulate raw JSON in context and it stays there.
 A `--out` flag writes results to a temp file; Claude reads it once and the raw data doesn't compound.
 **Fix:** add `--out <path>` to `search.mjs`; write JSON to file instead of stdout when set.
 
-## 5. Source fetching layer
+## 5. Source fetching layer ← IN PROGRESS
 GreedySearch surfaces the tip of the iceberg. Sources array has URLs to real articles.
 A `--fetch-top-source` flag could fetch the first source from the best answer via CDP.
 **Fix:** after extraction, pick the top source URL, nav a tab to it, extract body text.

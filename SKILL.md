@@ -34,11 +34,17 @@ CHROME_PATH="/path/to/chrome" node ~/.claude/skills/greedysearch/search.mjs all 
 ## Usage
 
 ```bash
-# All engines in parallel — --short by default (300 char answers, ~3x fewer tokens)
+# All engines — --short by default (300 char answers, ~3x fewer tokens)
 node ~/.claude/skills/greedysearch/search.mjs all --short "<query>"
 
-# Full answers when depth is needed (error diagnosis, architecture questions)
+# Full answers when depth is needed
 node ~/.claude/skills/greedysearch/search.mjs all "<query>"
+
+# Write results to file (keeps raw JSON off context)
+node ~/.claude/skills/greedysearch/search.mjs all --short --out /tmp/gs.json "<query>"
+
+# Fetch full content of top source (1500 chars of article body)
+node ~/.claude/skills/greedysearch/search.mjs all --short --fetch-top-source "<query>"
 
 # Single engine
 node ~/.claude/skills/greedysearch/search.mjs p --short "<query>"   # Perplexity

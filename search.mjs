@@ -22,7 +22,7 @@
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { join, dirname } from 'path';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync } from 'fs';
 import { tmpdir, homedir } from 'os';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -137,6 +137,45 @@ function runExtractor(script, query, tabPrefix = null, short = false) {
 }
 
 
+async function fetchTopSource(url) {
+  const tab = await openNewTab();
+  await cdp(['list']); // refresh cache so the new tab is findable
+  try {
+    await cdp(['nav', tab, url], 30000);
+    await new Promise(r => setTimeout(r, 1500));
+    const content = await cdp(['eval', tab, `
+      (function(){
+        var el = document.querySelector('article, [role="main"], main, .post-content, .article-body, #content, .content');
+        var text = (el || document.body).innerText;
+        return text.replace(/\\s+/g, ' ').trim().slice(0, 1500);
+      })()
+    `]);
+    return { url, content };
+  } catch (e) {
+    return { url, content: null, error: e.message };
+  } finally {
+    await closeTab(tab);
+  }
+}
+
+function pickTopSource(out) {
+  for (const engine of ['perplexity', 'google', 'bing']) {
+    const r = out[engine];
+    if (r?.sources?.length > 0) return r.sources[0];
+  }
+  return null;
+}
+
+function writeOutput(data, outFile) {
+  const json = JSON.stringify(data, null, 2) + '\n';
+  if (outFile) {
+    writeFileSync(outFile, json, 'utf8');
+    process.stderr.write(`Results written to ${outFile}\n`);
+  } else {
+    process.stdout.write(json);
+  }
+}
+
 async function ensureChrome() {
   try {
     await cdp(['list'], 3000);
@@ -167,8 +206,16 @@ async function main() {
 
   await ensureChrome();
 
-  const short  = args.includes('--short');
-  const rest   = args.filter(a => a !== '--short');
+  const short       = args.includes('--short');
+  const fetchSource = args.includes('--fetch-top-source');
+  const outIdx      = args.indexOf('--out');
+  const outFile     = outIdx !== -1 ? args[outIdx + 1] : null;
+  const rest        = args.filter((a, i) =>
+    a !== '--short' &&
+    a !== '--fetch-top-source' &&
+    a !== '--out' &&
+    (outIdx === -1 || i !== outIdx + 1)
+  );
   const engine = rest[0].toLowerCase();
   const query  = rest.slice(1).join(' ');
 
@@ -218,7 +265,12 @@ async function main() {
       }
     }
 
-    process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+    if (fetchSource) {
+      const top = pickTopSource(out);
+      if (top) out._topSource = await fetchTopSource(top.url);
+    }
+
+    writeOutput(out, outFile);
     return;
   }
 
@@ -230,7 +282,10 @@ async function main() {
 
   try {
     const result = await runExtractor(script, query, null, short);
-    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+    if (fetchSource && result.sources?.length > 0) {
+      result.topSource = await fetchTopSource(result.sources[0].url);
+    }
+    writeOutput(result, outFile);
   } catch (e) {
     process.stderr.write(`Error: ${e.message}\n`);
     process.exit(1);
