@@ -24,6 +24,7 @@ import { fileURLToPath } from 'url';
 import { join, dirname } from 'path';
 import { readFileSync, existsSync, writeFileSync } from 'fs';
 import { tmpdir, homedir } from 'os';
+import http from 'http';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const CDP = join(homedir(), '.claude', 'skills', 'chrome-cdp', 'scripts', 'cdp.mjs');
@@ -176,16 +177,26 @@ function writeOutput(data, outFile) {
   }
 }
 
-async function ensureChrome() {
-  try {
-    await cdp(['list'], 3000);
-  } catch {
-    process.stderr.write('Chrome not running — auto-launching GreedySearch Chrome...\n');
-    await new Promise((resolve, reject) => {
-      const proc = spawn('node', [join(__dir, 'launch.mjs')], { stdio: ['ignore', process.stderr, process.stderr] });
-      proc.on('close', code => code === 0 ? resolve() : reject(new Error('launch.mjs failed')));
+const GREEDY_PORT = 9223;
+
+function isGreedySearchChromeUp() {
+  return new Promise(resolve => {
+    const req = http.get(`http://localhost:${GREEDY_PORT}/json/version`, res => {
+      resolve(res.statusCode === 200);
+      res.resume();
     });
-  }
+    req.on('error', () => resolve(false));
+    req.setTimeout(1500, () => { req.destroy(); resolve(false); });
+  });
+}
+
+async function ensureChrome() {
+  if (await isGreedySearchChromeUp()) return;
+  process.stderr.write('GreedySearch Chrome not running — auto-launching...\n');
+  await new Promise((resolve, reject) => {
+    const proc = spawn('node', [join(__dir, 'launch.mjs')], { stdio: ['ignore', process.stderr, process.stderr] });
+    proc.on('close', code => code === 0 ? resolve() : reject(new Error('launch.mjs failed')));
+  });
 }
 
 async function main() {
