@@ -188,6 +188,42 @@ const ENGINES = {
 
 // ---------------------------------------------------------------------------
 
+async function summarizeWithHaiku(result, mode) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    process.stderr.write('[summarize] ANTHROPIC_API_KEY not set — skipping summary\n');
+    return null;
+  }
+  const prompt = `You are summarizing AI assistant responses to a ${mode} task. Extract only what matters.
+Return 4-6 bullet points covering: the most critical findings, concrete recommendations, and anything flagged by multiple engines. Skip preamble. Be terse.
+
+Results:
+${JSON.stringify(result, null, 2).slice(0, 8000)}`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    const data = await res.json();
+    return data.content?.[0]?.text || null;
+  } catch (e) {
+    process.stderr.write(`[summarize] Haiku call failed: ${e.message}\n`);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+
 function extractCodeBlocks(text) {
   const blocks = [];
   const regex = /```(\w+)?\n([\s\S]*?)```/g;
@@ -297,6 +333,7 @@ async function main() {
   const tabPrefix = tabFlagIdx !== -1 ? args[tabFlagIdx + 1] : null;
   const modeFlagIdx = args.indexOf('--mode');
   const mode = modeFlagIdx !== -1 ? args[modeFlagIdx + 1] : 'code';
+  const summarize = args.includes('--summarize');
 
   if (!MODE_PROMPTS.hasOwnProperty(mode)) {
     process.stderr.write(`Error: unknown mode "${mode}". Use: code, review, plan, test, debug\n`);
@@ -324,6 +361,7 @@ async function main() {
     ...(tabFlagIdx     >= 0 ? [tabFlagIdx,     tabFlagIdx     + 1] : []),
     ...(modeFlagIdx    >= 0 ? [modeFlagIdx,    modeFlagIdx    + 1] : []),
     ...fileIndices,
+    ...args.reduce((acc, a, i) => a === '--summarize' ? [...acc, i] : acc, []),
   ]);
   const task = args.filter((_, i) => !skipFlags.has(i)).join(' ');
 
@@ -360,6 +398,13 @@ async function main() {
     process.stderr.write(`Results written to ${outFile}\n`);
   } else {
     process.stdout.write(json);
+  }
+
+  if (summarize) {
+    const summary = await summarizeWithHaiku(result, mode);
+    if (summary) {
+      process.stdout.write('\n--- Haiku summary ---\n' + summary + '\n');
+    }
   }
 }
 
