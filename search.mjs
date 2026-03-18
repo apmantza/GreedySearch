@@ -182,6 +182,9 @@ function writeOutput(data, outFile) {
   }
 }
 
+const GREEDY_PROFILE_DIR = `${tmpdir().replace(/\\/g, '/')}/greedysearch-chrome-profile`;
+const ACTIVE_PORT_FILE   = `${GREEDY_PROFILE_DIR}/DevToolsActivePort`;
+
 function probePort9223(timeoutMs = 3000) {
   return new Promise(resolve => {
     const req = http.get('http://localhost:9223/json/version', res => {
@@ -193,6 +196,25 @@ function probePort9223(timeoutMs = 3000) {
   });
 }
 
+// Write (or refresh) the DevToolsActivePort file for the GreedySearch Chrome so
+// cdp.mjs always connects to port 9223 rather than the user's main Chrome.
+async function refreshPortFile() {
+  try {
+    const body = await new Promise((res, rej) => {
+      const req = http.get('http://localhost:9223/json/version', r => {
+        let b = '';
+        r.on('data', d => b += d);
+        r.on('end', () => res(b));
+      });
+      req.on('error', rej);
+      req.setTimeout(3000, () => { req.destroy(); rej(new Error('timeout')); });
+    });
+    const { webSocketDebuggerUrl } = JSON.parse(body);
+    const wsPath = new URL(webSocketDebuggerUrl).pathname;
+    writeFileSync(ACTIVE_PORT_FILE, `9223\n${wsPath}`, 'utf8');
+  } catch { /* best-effort — launch.mjs already wrote the file on first start */ }
+}
+
 async function ensureChrome() {
   const ready = await probePort9223();
   if (!ready) {
@@ -201,6 +223,11 @@ async function ensureChrome() {
       const proc = spawn('node', [join(__dir, 'launch.mjs')], { stdio: ['ignore', process.stderr, process.stderr] });
       proc.on('close', code => code === 0 ? resolve() : reject(new Error('launch.mjs failed')));
     });
+  } else {
+    // Chrome already running — refresh the port file so cdp.mjs always picks
+    // up port 9223, even if the system DevToolsActivePort was overwritten by
+    // a main Chrome restart since the last launch.
+    await refreshPortFile();
   }
 }
 
