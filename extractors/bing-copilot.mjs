@@ -96,16 +96,28 @@ async function extractAnswer(tab) {
   const answer = await cdp(['eval', tab, `window.__bingClipboard || ''`]);
   if (!answer) throw new Error('Clipboard interceptor returned empty text');
 
-  const raw = await cdp(['eval', tab, `
+  // Sources render asynchronously after the answer — poll until at least one appears.
+  const sourceScript = `
     (function() {
       var sources = Array.from(document.querySelectorAll('a[href^="http"][target="_blank"]'))
-        .map(a => ({ url: a.href, title: a.innerText?.trim().split('\\n')[0] || a.title || '' }))
-        .filter(s => s.url && !s.url.includes('copilot.microsoft.com'))
+        .map(a => {
+          var lines = a.innerText?.trim().split('\\n').map(function(l){ return l.trim(); }).filter(Boolean) || [];
+          var title = lines.length > 1 ? lines[1] : lines[0] || a.title || '';
+          return { url: a.href, title: title };
+        })
+        .filter(s => s.url && !s.url.includes('copilot.microsoft.com') && !s.url.includes('microsoft.com'))
         .filter((v, i, arr) => arr.findIndex(x => x.url === v.url) === i)
         .slice(0, 10);
       return JSON.stringify(sources);
     })()
-  `]).catch(() => '[]');
+  `;
+  let raw = '[]';
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    raw = await cdp(['eval', tab, sourceScript]).catch(() => '[]');
+    if (JSON.parse(raw).length > 0) break;
+    await new Promise(r => setTimeout(r, 1000));
+  }
   const sources = JSON.parse(raw);
 
   return { answer: answer.trim(), sources };

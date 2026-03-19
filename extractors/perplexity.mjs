@@ -101,12 +101,26 @@ async function extractAnswer(tab) {
 
   const raw = await cdp(['eval', tab, `
     (function() {
-      var sources = Array.from(document.querySelectorAll('[data-pplx-citation-url]'))
-        .map(el => ({ url: el.getAttribute('data-pplx-citation-url'), title: el.querySelector('a')?.innerText?.trim() || '' }))
-        .filter(s => s.url)
-        .filter((v, i, arr) => arr.findIndex(x => x.url === v.url) === i)
-        .slice(0, 10);
-      return JSON.stringify(sources);
+      // Perplexity no longer puts URLs in DOM attributes — they live in React fiber props.
+      var badges = Array.from(document.querySelectorAll('span.text-3xs.rounded-badge'));
+      var seen = new Set();
+      var sources = [];
+      for (var b of badges) {
+        var fk = Object.keys(b).find(function(k){ return k.startsWith('__reactFiber'); });
+        if (!fk) continue;
+        var cur = b[fk];
+        for (var i = 0; i < 15; i++) {
+          if (!cur) break;
+          var p = cur.memoizedProps;
+          if (p && p.url && p.url.startsWith('http') && !seen.has(p.url)) {
+            seen.add(p.url);
+            sources.push({ url: p.url, title: p.domain || p.source || '' });
+            break;
+          }
+          cur = cur.return;
+        }
+      }
+      return JSON.stringify(sources.slice(0, 10));
     })()
   `]).catch(() => '[]');
   const sources = JSON.parse(raw);

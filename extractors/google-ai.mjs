@@ -92,7 +92,10 @@ async function extractAnswer(tab) {
       var answer = el.innerText.trim();
       var sources = Array.from(document.querySelectorAll('a[href^="http"]'))
         .filter(a => !a.href.includes('google.') && !a.href.includes('gstatic') && !a.href.includes('googleapis'))
-        .map(a => ({ url: a.href.split('#')[0], title: (a.closest('[data-snhf]')?.querySelector('h3, [role=heading]')?.innerText || a.innerText?.trim().split('\\n')[0] || '').slice(0, 100) }))
+        .map(a => ({
+          url: a.href.split('#')[0],
+          title: (a.innerText?.trim().split('\\n')[0] || a.parentElement?.innerText?.trim().split('\\n')[0] || '').slice(0, 100)
+        }))
         .filter(s => s.url && s.url.length > 10)
         .filter((v, i, arr) => arr.findIndex(x => x.url === v.url) === i)
         .slice(0, 10);
