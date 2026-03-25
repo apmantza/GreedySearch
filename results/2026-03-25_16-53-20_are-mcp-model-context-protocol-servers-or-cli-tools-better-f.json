@@ -1,0 +1,327 @@
+{
+  "perplexity": {
+    "error": "Error: Perplexity copy button did not appear within 30000ms"
+  },
+  "bing": {
+    "engine": "bing",
+    "query": "are MCP (Model Context Protocol) servers or CLI tools better for AI agent tool use",
+    "url": "https://copilot.microsoft.com/chats/MX8F8UQzvPUJcWfSoj48R",
+    "answer": "**Short answer: neither is universally “better.”** MCP servers shine when you need *structured, authenticated, multi‑tool,…",
+    "sources": []
+  },
+  "google": {
+    "engine": "google",
+    "query": "are MCP (Model Context Protocol) servers or CLI tools better for AI agent tool use",
+    "url": "https://www.google.com/search?q=are+MCP+%28Model+Context+Protocol%29+servers+or+CLI+tools+better+for+AI+agent+tool+use&udm=50&mstk=AUtExfCXN1uhM4RING_dTATUOsh8onlvo85zw7GRJaDX6IDb5KFwIT_p9UrqkAoxK2d_yTa-Uh792BN7BYmWcLpl6zUjEFu5P_GC1Jur4tOF4ChKqG0gIFJkPoGdBboIOLrJ_w1veWb5VcXP1pEsA-PQLqoW5-HCpC2_0Ys&csuir=1",
+    "answer": "The choice between Model Context Protocol (MCP) servers and CLI tools for AI agents depends on whether you prioritize speed and cost (CLI) or standardization and security (MCP). \nCircleCI\n +1\nComparison Overview\nFeature \tCLI Tools\tMCP Servers\nPrimary Use\tLocal \"inner loop\" development (coding,…",
+    "sources": [
+      {
+        "url": "https://circleci.com/blog/mcp-vs-cli/",
+        "title": ""
+      },
+      {
+        "url": "https://oneuptime.com/blog/post/2026-02-03-cli-is-the-new-mcp/view",
+        "title": ""
+      },
+      {
+        "url": "https://www.courier.com/blog/your-ai-agent-already-knows-how-to-use-a-terminal-why-cli-beat-mcp-servers",
+        "title": ""
+      },
+      {
+        "url": "https://www.anthropic.com/engineering/code-execution-with-mcp",
+        "title": ""
+      },
+      {
+        "url": "https://www.scalekit.com/blog/mcp-vs-cli-use",
+        "title": ""
+      },
+      {
+        "url": "https://unified.to/blog/cli_vs_mcp_architecture_tradeoffs_for_ai_agents_and_saas_applications",
+        "title": ""
+      },
+      {
+        "url": "https://medium.com/@adeniyi221/ai-agents-vs-model-context-protocol-mcp-choosing-the-best-approach-a72723446eba",
+        "title": ""
+      },
+      {
+        "url": "https://www.youtube.com/watch?v=BMDFPOyezH4&t=50",
+        "title": ""
+      },
+      {
+        "url": "https://jannikreinhard.com/2026/02/22/why-cli-tools-are-beating-mcp-for-ai-agents/",
+        "title": ""
+      },
+      {
+        "url": "https://www.youtube.com/watch?v=Qdx5uqnMJNI",
+        "title": ""
+      }
+    ]
+  },
+  "_sources": [
+    {
+      "id": "S1",
+      "canonicalUrl": "https://circleci.com/blog/mcp-vs-cli",
+      "displayUrl": "https://circleci.com/blog/mcp-vs-cli/",
+      "domain": "circleci.com",
+      "title": "circleci.com",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 1,
+          "title": ""
+        }
+      },
+      "sourceType": "maintainer-blog",
+      "isOfficial": false
+    },
+    {
+      "id": "S2",
+      "canonicalUrl": "https://oneuptime.com/blog/post/2026-02-03-cli-is-the-new-mcp/view",
+      "displayUrl": "https://oneuptime.com/blog/post/2026-02-03-cli-is-the-new-mcp/view",
+      "domain": "oneuptime.com",
+      "title": "oneuptime.com",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 2,
+          "title": ""
+        }
+      },
+      "sourceType": "maintainer-blog",
+      "isOfficial": false
+    },
+    {
+      "id": "S3",
+      "canonicalUrl": "https://www.courier.com/blog/your-ai-agent-already-knows-how-to-use-a-terminal-why-cli-beat-mcp-servers",
+      "displayUrl": "https://www.courier.com/blog/your-ai-agent-already-knows-how-to-use-a-terminal-why-cli-beat-mcp-servers",
+      "domain": "courier.com",
+      "title": "courier.com",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 3,
+          "title": ""
+        }
+      },
+      "sourceType": "maintainer-blog",
+      "isOfficial": false
+    },
+    {
+      "id": "S4",
+      "canonicalUrl": "https://www.scalekit.com/blog/mcp-vs-cli-use",
+      "displayUrl": "https://www.scalekit.com/blog/mcp-vs-cli-use",
+      "domain": "scalekit.com",
+      "title": "scalekit.com",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 5,
+          "title": ""
+        }
+      },
+      "sourceType": "maintainer-blog",
+      "isOfficial": false
+    },
+    {
+      "id": "S5",
+      "canonicalUrl": "https://unified.to/blog/cli_vs_mcp_architecture_tradeoffs_for_ai_agents_and_saas_applications",
+      "displayUrl": "https://unified.to/blog/cli_vs_mcp_architecture_tradeoffs_for_ai_agents_and_saas_applications",
+      "domain": "unified.to",
+      "title": "unified.to",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 6,
+          "title": ""
+        }
+      },
+      "sourceType": "maintainer-blog",
+      "isOfficial": false
+    },
+    {
+      "id": "S6",
+      "canonicalUrl": "https://www.anthropic.com/engineering/code-execution-with-mcp",
+      "displayUrl": "https://www.anthropic.com/engineering/code-execution-with-mcp",
+      "domain": "anthropic.com",
+      "title": "anthropic.com",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 4,
+          "title": ""
+        }
+      },
+      "sourceType": "website",
+      "isOfficial": false
+    },
+    {
+      "id": "S7",
+      "canonicalUrl": "https://www.youtube.com/watch?t=50&v=BMDFPOyezH4",
+      "displayUrl": "https://www.youtube.com/watch?v=BMDFPOyezH4&t=50",
+      "domain": "youtube.com",
+      "title": "youtube.com",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 8,
+          "title": ""
+        }
+      },
+      "sourceType": "website",
+      "isOfficial": false
+    },
+    {
+      "id": "S8",
+      "canonicalUrl": "https://jannikreinhard.com/2026/02/22/why-cli-tools-are-beating-mcp-for-ai-agents",
+      "displayUrl": "https://jannikreinhard.com/2026/02/22/why-cli-tools-are-beating-mcp-for-ai-agents/",
+      "domain": "jannikreinhard.com",
+      "title": "jannikreinhard.com",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 9,
+          "title": ""
+        }
+      },
+      "sourceType": "website",
+      "isOfficial": false
+    },
+    {
+      "id": "S9",
+      "canonicalUrl": "https://www.youtube.com/watch?v=Qdx5uqnMJNI",
+      "displayUrl": "https://www.youtube.com/watch?v=Qdx5uqnMJNI",
+      "domain": "youtube.com",
+      "title": "youtube.com",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 10,
+          "title": ""
+        }
+      },
+      "sourceType": "website",
+      "isOfficial": false
+    },
+    {
+      "id": "S10",
+      "canonicalUrl": "https://medium.com/@adeniyi221/ai-agents-vs-model-context-protocol-mcp-choosing-the-best-approach-a72723446eba",
+      "displayUrl": "https://medium.com/@adeniyi221/ai-agents-vs-model-context-protocol-mcp-choosing-the-best-approach-a72723446eba",
+      "domain": "medium.com",
+      "title": "medium.com",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 7,
+          "title": ""
+        }
+      },
+      "sourceType": "community",
+      "isOfficial": false
+    }
+  ],
+  "_synthesis": {
+    "answer": "Neither is universally superior; MCP servers are preferred for standardized, secure, and multi-tool orchestration in production environments, while CLI tools are better for rapid development, lower latency, and utilizing existing terminal-based workflows.",
+    "agreement": {
+      "level": "high",
+      "summary": "Both Bing and Google AI agree that the choice is context-dependent, highlighting a trade-off between the structured, secure nature of MCP and the speed and accessibility of CLI tools."
+    },
+    "differences": [
+      "Google's results emphasize a shifting trend where some developers argue CLI tools are 'beating' MCP due to lower friction for agents already familiar with terminal environments.",
+      "Bing focuses more on the functional strengths of MCP for multi-tool authentication and structured data handling."
+    ],
+    "caveats": [
+      "CLI tools can pose higher security risks if the agent has unrestricted shell access.",
+      "MCP requires specific implementation and hosting, which adds overhead compared to pre-existing CLI utilities.",
+      "Latency can be a factor as MCP introduces an additional protocol layer."
+    ],
+    "claims": [
+      {
+        "claim": "MCP servers provide better standardization and security for production AI agents.",
+        "support": "strong",
+        "sourceIds": [
+          "S1",
+          "S6"
+        ]
+      },
+      {
+        "claim": "CLI tools offer faster 'inner loop' development and lower implementation costs.",
+        "support": "strong",
+        "sourceIds": [
+          "S1",
+          "S5"
+        ]
+      },
+      {
+        "claim": "There is a growing trend of CLI tools replacing or competing directly with MCP for agentic workflows.",
+        "support": "moderate",
+        "sourceIds": [
+          "S2",
+          "S3",
+          "S8"
+        ]
+      },
+      {
+        "claim": "AI agents naturally understand terminal interfaces, making CLI tools easier to integrate initially.",
+        "support": "moderate",
+        "sourceIds": [
+          "S3"
+        ]
+      }
+    ],
+    "recommendedSources": [
+      "S1",
+      "S6",
+      "S5"
+    ],
+    "rawAnswer": "{\n  \"answer\": \"Neither is universally superior; MCP servers are preferred for standardized, secure, and multi-tool orchestration in production environments, while CLI tools are better for rapid development, lower latency, and utilizing existing terminal-based workflows.\",\n  \"agreement\": {\n    \"level\": \"high\",\n    \"summary\": \"Both Bing and Google AI agree that the choice is context-dependent, highlighting a trade-off between the structured, secure nature of MCP and the speed and accessibility of CLI tools.\"\n  },\n  \"differences\": [\n    \"Google's results emphasize a shifting trend where some developers argue CLI tools are 'beating' MCP due to lower friction for agents already familiar with terminal environments.\",\n    \"Bing focuses more on the functional strengths of MCP for multi-tool authentication and structured data handling.\"\n  ],\n  \"caveats\": [\n    \"CLI tools can pose higher security risks if the agent has unrestricted shell access.\",\n    \"MCP requires specific implementation and hosting, which adds overhead compared to pre-existing CLI utilities.\",\n    \"Latency can be a factor as MCP introduces an additional protocol layer.\"\n  ],\n  \"claims\": [\n    {\n      \"claim\": \"MCP servers provide better standardization and security for production AI agents.\",\n      \"support\": \"strong\",\n      \"sourceIds\": [\"S1\", \"S6\"]\n    },\n    {\n      \"claim\": \"CLI tools offer faster 'inner loop' development and lower implementation costs.\",\n      \"support\": \"strong\",\n      \"sourceIds\": [\"S1\", \"S5\"]\n    },\n    {\n      \"claim\": \"There is a growing trend of CLI tools replacing or competing directly with MCP for agentic workflows.\",\n      \"support\": \"moderate\",\n      \"sourceIds\": [\"S2\", \"S3\", \"S8\"]\n    },\n    {\n      \"claim\": \"AI agents naturally understand terminal interfaces, making CLI tools easier to integrate initially.\",\n      \"support\": \"moderate\",\n      \"sourceIds\": [\"S3\"]\n    }\n  ],\n  \"recommendedSources\": [\"S1\", \"S6\", \"S5\"]\n}\n\nBy the way, to unlock the full functionality of all Apps, enable [Gemini Apps Activity](https://myactivity.google.com/product/gemini).",
+    "geminiSources": [
+      {
+        "url": "https://one.google.com/ai",
+        "title": "Subscriptions"
+      },
+      {
+        "url": "https://workspace.google.com/solutions/ai/?utm_source=geminiforbusiness&utm_medium=et&utm_campaign=gemini-page-crosslink&utm_term=-&utm_content=forbusiness-2025Q3",
+        "title": "For Business"
+      },
+      {
+        "url": "https://myactivity.google.com/product/gemini",
+        "title": "Gemini Apps Activity"
+      },
+      {
+        "url": "https://support.google.com/gemini?p=privacy_notice",
+        "title": "Your privacy & Gemini"
+      }
+    ],
+    "synthesized": true
+  }
+}

@@ -1,0 +1,1091 @@
+diff --git a/extractors/bing-copilot.mjs "b/C:\\Users\\R3LiC\\Desktop\\GreedySearch-pi\\extractors/bing-copilot.mjs"
+index da0753f..5b2f202 100644
+--- a/extractors/bing-copilot.mjs
++++ "b/C:\\Users\\R3LiC\\Desktop\\GreedySearch-pi\\extractors/bing-copilot.mjs"
+@@ -10,16 +10,21 @@
+ 
+ import { readFileSync, existsSync } from 'fs';
+ import { spawn } from 'child_process';
+-import { tmpdir, homedir } from 'os';
+-import { join } from 'path';
++import { tmpdir } from 'os';
++import { join, dirname } from 'path';
++import { fileURLToPath } from 'url';
+ import { dismissConsent, handleVerification } from './consent.mjs';
++import { SELECTORS } from './selectors.mjs';
+ 
+-const CDP = join(homedir(), '.claude', 'skills', 'chrome-cdp', 'scripts', 'cdp.mjs');
++const __dir = dirname(fileURLToPath(import.meta.url));
++const CDP = join(__dir, '..', 'cdp.mjs');
+ const PAGES_CACHE = `${tmpdir().replace(/\\/g, '/')}/cdp-pages.json`;
+ 
+ const COPY_POLL_INTERVAL = 700;
+ const COPY_TIMEOUT = 60000;
+ 
++const S = SELECTORS.bing;
++
+ // ---------------------------------------------------------------------------
+ 
+ function cdp(args, timeoutMs = 30000) {
+@@ -82,7 +87,7 @@ async function waitForCopyButton(tab) {
+   while (Date.now() < deadline) {
+     await new Promise(r => setTimeout(r, COPY_POLL_INTERVAL));
+     const found = await cdp(['eval', tab,
+-      `!!document.querySelector('button[data-testid="copy-ai-message-button"]')`
++      `!!document.querySelector('${S.copyButton}')`
+     ]).catch(() => 'false');
+     if (found === 'true') return;
+   }
+@@ -90,14 +95,23 @@ async function waitForCopyButton(tab) {
+ }
+ 
+ async function extractAnswer(tab) {
+-  await cdp(['eval', tab, `document.querySelector('button[data-testid="copy-ai-message-button"]')?.click()`]);
++  await cdp(['eval', tab, `document.querySelector('${S.copyButton}')?.click()`]);
+   await new Promise(r => setTimeout(r, 400));
+ 
+   const answer = await cdp(['eval', tab, `window.__bingClipboard || ''`]);
+   if (!answer) throw new Error('Clipboard interceptor returned empty text');
+ 
+-  // Bing sources lazy-load well after the answer stream — not reliably capturable.
+-  const sources = [];
++  const raw = await cdp(['eval', tab, `
++    (function() {
++      var sources = Array.from(document.querySelectorAll('${S.sourceLink}'))
++        .map(a => ({ url: a.href, title: a.innerText?.trim().split('\\n')[0] || a.title || '' }))
++        .filter(s => s.url && !s.url.includes('${S.sourceExclude}'))
++        .filter((v, i, arr) => arr.findIndex(x => x.url === v.url) === i)
++        .slice(0, 10);
++      return JSON.stringify(sources);
++    })()
++  `]).catch(() => '[]');
++  const sources = JSON.parse(raw);
+ 
+   return { answer: answer.trim(), sources };
+ }
+@@ -125,29 +139,52 @@ async function main() {
+ 
+     // Navigate to Copilot homepage and use the chat input
+     await cdp(['nav', tab, 'https://copilot.microsoft.com/'], 35000);
+-    await new Promise(r => setTimeout(r, 1500));
++    await new Promise(r => setTimeout(r, 2000));
+     await dismissConsent(tab, cdp);
+-    await handleVerification(tab, cdp, 60000);
++    
++    // Handle verification challenges (Cloudflare Turnstile, Microsoft auth, etc.)
++    const verifyResult = await handleVerification(tab, cdp, 90000);
++    if (verifyResult === 'needs-human') {
++      throw new Error('Copilot verification required — please solve it manually in the browser window');
++    }
++    
++    // After verification, page may have redirected or reloaded — wait for it to settle
++    if (verifyResult === 'clicked') {
++      await new Promise(r => setTimeout(r, 3000));
++      
++      // Re-navigate if we got redirected
++      const currentUrl = await cdp(['eval', tab, 'document.location.href']).catch(() => '');
++      if (!currentUrl.includes('copilot.microsoft.com')) {
++        await cdp(['nav', tab, 'https://copilot.microsoft.com/'], 35000);
++        await new Promise(r => setTimeout(r, 2000));
++        await dismissConsent(tab, cdp);
++      }
++    }
+ 
+-    // Wait for React app to mount #userInput (up to 8s)
+-    const deadline = Date.now() + 8000;
+-    while (Date.now() < deadline) {
+-      const found = await cdp(['eval', tab, `!!document.querySelector('#userInput')`]).catch(() => 'false');
++    // Wait for React app to mount input (up to 15s, longer after verification)
++    const inputDeadline = Date.now() + 15000;
++    while (Date.now() < inputDeadline) {
++      const found = await cdp(['eval', tab, `!!document.querySelector('${S.input}')`]).catch(() => 'false');
+       if (found === 'true') break;
+-      await new Promise(r => setTimeout(r, 400));
++      await new Promise(r => setTimeout(r, 500));
+     }
+     await new Promise(r => setTimeout(r, 300));
+ 
++    // Verify input is actually there before proceeding
++    const inputReady = await cdp(['eval', tab, `!!document.querySelector('${S.input}')`]).catch(() => 'false');
++    if (inputReady !== 'true') {
++      throw new Error('Copilot input not found — verification may have failed or page is in unexpected state');
++    }
++
+     await injectClipboardInterceptor(tab);
+-    // Find input and type query
+-    await cdp(['click', tab, '#userInput']);
++    await cdp(['click', tab, S.input]);
+     await new Promise(r => setTimeout(r, 400));
+     await cdp(['type', tab, query]);
+     await new Promise(r => setTimeout(r, 400));
+ 
+     // Submit with Enter (most reliable across locales and Chrome instances)
+     await cdp(['eval', tab,
+-      `document.querySelector('#userInput')?.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,keyCode:13})), 'ok'`
++      `document.querySelector('${S.input}')?.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,keyCode:13})), 'ok'`
+     ]);
+ 
+     await waitForCopyButton(tab);
+diff --git a/extractors/consent.mjs "b/C:\\Users\\R3LiC\\Desktop\\GreedySearch-pi\\extractors/consent.mjs"
+index 6f4645a..6b2fb13 100644
+--- a/extractors/consent.mjs
++++ "b/C:\\Users\\R3LiC\\Desktop\\GreedySearch-pi\\extractors/consent.mjs"
+@@ -20,28 +20,135 @@ const CONSENT_JS = `
+ })()
+ `;
+ 
+-// Detect Google's "verify you're human" / unusual traffic page
++// Detect and auto-click human verification challenges (Google, Microsoft, Cloudflare)
+ const VERIFY_DETECT_JS = `
+ (function() {
+   var url = document.location.href;
++  
++  // --- Google "sorry" page (hard CAPTCHA, can't auto-solve) ---
+   if (url.includes('/sorry/') || url.includes('sorry.google')) return 'sorry-page';
+-
+-  // Simple click-through verify button (not image CAPTCHA)
++  
++  // --- Microsoft account verification page ---
++  if (url.includes('login.microsoftonline.com') || url.includes('login.live.com') || url.includes('account.microsoft.com')) {
++    // Look for "Verify" or "Continue" buttons on Microsoft auth pages
++    var msBtns = Array.from(document.querySelectorAll('button, input[type=submit], a'));
++    var msVerify = msBtns.find(b => /verify|continue|next/i.test(b.innerText?.trim() || b.value || ''));
++    if (msVerify) { msVerify.click(); return 'clicked-ms-verify:' + (msVerify.innerText?.trim() || msVerify.value); }
++  }
++  
++  // --- Bing Copilot / Microsoft "Verify you're human" interstitial ---
++  // Copilot sometimes shows a modal with "Continue" or "Verify" before allowing queries
++  if (url.includes('copilot.microsoft.com') || url.includes('bing.com/chat')) {
++    // Look for verification modal/dialog
++    var modal = document.querySelector('[role="dialog"], .b_modal, .bnp_hfly, [class*="verify"], [class*="challenge"]');
++    if (modal) {
++      // Find any actionable button in the modal
++      var modalBtns = Array.from(modal.querySelectorAll('button, a[role="button"], input[type="submit"]'));
++      var actionBtn = modalBtns.find(b => /^(continue|verify|submit|next|i agree|accept|got it)$/i.test(b.innerText?.trim() || b.value || ''));
++      if (actionBtn) { actionBtn.click(); return 'clicked-copilot-modal:' + actionBtn.innerText.trim(); }
++    }
++    
++    // Check for Turnstile iframe (Copilot uses Cloudflare Turnstile)
++    var turnstileIframe = document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"], iframe[title*="challenge"], iframe[title*="Widget"]');
++    if (turnstileIframe) {
++      // Try clicking the iframe container or nearby checkbox
++      var container = turnstileIframe.closest('[class*="turnstile"], [class*="challenge"], [id*="turnstile"]') || turnstileIframe.parentElement;
++      if (container) {
++        var checkbox = container.querySelector('input[type="checkbox"]');
++        if (checkbox && !checkbox.checked) {
++          checkbox.click();
++          return 'clicked-turnstile-in-iframe';
++        }
++        // Click the container itself (Turnstile often captures clicks on parent)
++        container.click();
++        return 'clicked-turnstile-container-near-iframe';
++      }
++    }
++  }
++  
++  // --- Cloudflare Turnstile (used by Copilot and many sites) ---
++  // Turnstile widget in iframe
++  var turnstileIframe = document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]');
++  if (turnstileIframe) {
++    // Try to find and click the checkbox inside the iframe's container
++    var turnstileCheckbox = document.querySelector('#cf-turnstile-response, [data-turnstile-callback] input, .cf-turnstile input[type="checkbox"]');
++    if (turnstileCheckbox && !turnstileCheckbox.checked) {
++      turnstileCheckbox.click();
++      return 'clicked-turnstile-checkbox';
++    }
++    // Try clicking the turnstile container itself (some implementations)
++    var turnstileContainer = document.querySelector('.cf-turnstile, [data-sitekey]');
++    if (turnstileContainer) {
++      turnstileContainer.click();
++      return 'clicked-turnstile-container';
++    }
++  }
++  
++  // --- Cloudflare "Verify you are human" challenge page ---
++  if (url.includes('challenges.cloudflare.com') || document.querySelector('#challenge-running, #challenge-stage')) {
++    var cfCheckbox = document.querySelector('#cf-stage input[type="checkbox"], .ctp-checkbox-container input');
++    if (cfCheckbox) { cfCheckbox.click(); return 'clicked-cloudflare-checkbox'; }
++    var cfBtn = document.querySelector('#challenge-form button, .cf-challenge button');
++    if (cfBtn) { cfBtn.click(); return 'clicked-cloudflare-button'; }
++  }
++  
++  // --- Microsoft "I am human" / "Verify" challenge ---
++  // Microsoft uses various verification UIs
++  var msHumanBtn = document.querySelector('button[id*="i0"], button[id*="id__"]');
++  if (msHumanBtn && /verify|human|robot|continue/i.test(msHumanBtn.innerText?.trim())) {
++    msHumanBtn.click();
++    return 'clicked-ms-human:' + msHumanBtn.innerText.trim();
++  }
++  
++  // --- Generic verification buttons (catch-all) ---
+   var btns = Array.from(document.querySelectorAll('button, input[type=submit], a[role=button]'));
+-  var verify = btns.find(b => /verify|human|not a robot|continue/i.test(b.innerText?.trim() || b.value || ''));
++  var verify = btns.find(b => /^(verify|verification|verify you are human|i am human|not a robot|continue|proceed)$/i.test(b.innerText?.trim() || b.value || ''));
+   if (verify && !document.querySelector('iframe[src*="recaptcha"]')) {
+     verify.click();
+     return 'clicked-verify:' + (verify.innerText?.trim() || verify.value);
+   }
+ 
+-  // Unchecked reCAPTCHA / Turnstile checkbox (no image challenge)
+-  var checkbox = document.querySelector('.recaptcha-checkbox-unchecked, input[type=checkbox][id*="recaptcha"], #cf-stage input[type=checkbox]');
+-  if (checkbox) { checkbox.click(); return 'clicked-checkbox'; }
++  // --- Google reCAPTCHA (no image challenge, just checkbox) ---
++  var recaptchaCheckbox = document.querySelector('.recaptcha-checkbox-unchecked, input[type=checkbox][id*="recaptcha"]');
++  if (recaptchaCheckbox) { recaptchaCheckbox.click(); return 'clicked-recaptcha'; }
+ 
+   return null;
+ })()
+ `;
+ 
++// Retry loop for verification — keeps checking and clicking until page changes or timeout
++const VERIFY_RETRY_JS = `
++(function() {
++  var url = document.location.href;
++  
++  // Check if we're still on a verification page
++  var isVerifyPage = url.includes('/sorry/') || 
++                     url.includes('challenges.cloudflare.com') ||
++                     url.includes('login.microsoftonline.com') ||
++                     document.querySelector('#challenge-running, #challenge-stage, .cf-turnstile, [role="dialog"]');
++  
++  if (!isVerifyPage) return 'cleared';
++  
++  // Try clicking any verify/continue button again
++  var btns = Array.from(document.querySelectorAll('button, input[type=submit], a[role=button]'));
++  var btn = btns.find(b => /^(verify|continue|next|i am human|not a robot|submit)$/i.test(b.innerText?.trim() || b.value || ''));
++  if (btn) { btn.click(); return 'clicked:' + (btn.innerText?.trim() || btn.value); }
++  
++  // Try Turnstile checkbox
++  var cf = document.querySelector('#cf-stage input[type="checkbox"], .cf-turnstile input');
++  if (cf && !cf.checked) { cf.click(); return 'clicked-turnstile'; }
++  
++  // Check for modal dialog with continue button (Copilot interstitial)
++  var modal = document.querySelector('[role="dialog"], .b_modal, [class*="verify"]');
++  if (modal) {
++    var modalBtn = modal.querySelector('button, a[role="button"]');
++    if (modalBtn) { modalBtn.click(); return 'clicked-modal-btn:' + modalBtn.innerText.trim(); }
++  }
++  
++  return 'still-verifying';
++})()
++`;
++
+ export async function dismissConsent(tab, cdp) {
+   const result = await cdp(['eval', tab, CONSENT_JS]).catch(() => null);
+   if (result && result !== 'null') {
+@@ -49,15 +156,26 @@ export async function dismissConsent(tab, cdp) {
+   }
+ }
+ 
++// Get iframe bounding box for coordinate-based clicking (for cross-origin Turnstile)
++const GET_IFRAME_CENTER_JS = `
++(function() {
++  var iframe = document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"], iframe[title*="challenge"], iframe[title*="Widget"]');
++  if (!iframe) return null;
++  var rect = iframe.getBoundingClientRect();
++  // Click near the center-left where the checkbox usually is
++  return JSON.stringify({ x: rect.left + 30, y: rect.top + rect.height / 2 });
++})()
++`;
++
+ // Returns 'clear' | 'clicked' | 'needs-human'
+ export async function handleVerification(tab, cdp, waitMs = 60000) {
+   const result = await cdp(['eval', tab, VERIFY_DETECT_JS]).catch(() => null);
+ 
+   if (!result || result === 'null') return 'clear';
+ 
++  // Hard CAPTCHA page — wait for user to solve it manually
+   if (result === 'sorry-page') {
+-    // Hard CAPTCHA page — wait for user to solve it manually
+-    process.stderr.write(`[greedysearch] Google verification required — please solve it in the browser window (waiting up to ${waitMs / 1000}s)...\n`);
++    process.stderr.write(`[greedysearch] Google CAPTCHA detected — please solve it in the browser window (waiting up to ${Math.floor(waitMs / 1000)}s)...\n`);
+     const deadline = Date.now() + waitMs;
+     while (Date.now() < deadline) {
+       await new Promise(r => setTimeout(r, 2000));
+@@ -67,9 +185,63 @@ export async function handleVerification(tab, cdp, waitMs = 60000) {
+     return 'needs-human';
+   }
+ 
++  // We clicked something — wait for page to update, then keep retrying
+   if (result.startsWith('clicked-')) {
++    process.stderr.write(`[greedysearch] Clicked verification: ${result}\n`);
+     await new Promise(r => setTimeout(r, 2000));
+-    return 'clicked';
++    
++    // Keep checking if verification cleared, retry clicking for up to waitMs
++    const deadline = Date.now() + waitMs;
++    while (Date.now() < deadline) {
++      const retryResult = await cdp(['eval', tab, VERIFY_RETRY_JS]).catch(() => null);
++      
++      if (retryResult === 'cleared' || !retryResult || retryResult === 'null') {
++        process.stderr.write(`[greedysearch] Verification cleared.\n`);
++        await new Promise(r => setTimeout(r, 1000));
++        return 'clicked';
++      }
++      
++      if (retryResult.startsWith('clicked:')) {
++        process.stderr.write(`[greedysearch] Retrying verification click...\n`);
++        await new Promise(r => setTimeout(r, 2000));
++      }
++      
++      // If verification is stuck, try clicking the Turnstile iframe by coordinates
++      const iframeCenter = await cdp(['eval', tab, GET_IFRAME_CENTER_JS]).catch(() => null);
++      if (iframeCenter && iframeCenter !== 'null') {
++        try {
++          const { x, y } = JSON.parse(iframeCenter);
++          process.stderr.write(`[greedysearch] Trying coordinate click on Turnstile iframe at (${x}, ${y})...\n`);
++          await cdp(['clickxy', tab, String(x), String(y)]);
++          await new Promise(r => setTimeout(r, 3000));
++        } catch {}
++      }
++      
++      await new Promise(r => setTimeout(r, 1500));
++    }
++    
++    // Still stuck — might need user intervention
++    process.stderr.write(`[greedysearch] Verification may require manual intervention.\n`);
++    return 'needs-human';
++  }
++
++  // Detection didn't find anything initially, but check for Turnstile iframe with coordinates
++  if (result === 'null' || !result) {
++    const iframeCenter = await cdp(['eval', tab, GET_IFRAME_CENTER_JS]).catch(() => null);
++    if (iframeCenter && iframeCenter !== 'null') {
++      process.stderr.write(`[greedysearch] Found Turnstile iframe, attempting coordinate click...\n`);
++      try {
++        const { x, y } = JSON.parse(iframeCenter);
++        await cdp(['clickxy', tab, String(x), String(y)]);
++        await new Promise(r => setTimeout(r, 3000));
++        
++        // Check if it worked
++        const cleared = await cdp(['eval', tab, VERIFY_RETRY_JS]).catch(() => null);
++        if (cleared === 'cleared' || cleared === 'null') {
++          return 'clicked';
++        }
++      } catch {}
++    }
+   }
+ 
+   return 'clear';
+diff --git a/extractors/gemini.mjs "b/C:\\Users\\R3LiC\\Desktop\\GreedySearch-pi\\extractors/gemini.mjs"
+index 547ef6d..d037441 100644
+--- a/extractors/gemini.mjs
++++ "b/C:\\Users\\R3LiC\\Desktop\\GreedySearch-pi\\extractors/gemini.mjs"
+@@ -10,17 +10,20 @@
+ 
+ import { readFileSync, existsSync } from 'fs';
+ import { spawn } from 'child_process';
+-import { tmpdir, homedir } from 'os';
++import { tmpdir } from 'os';
+ import { join, dirname } from 'path';
+ import { fileURLToPath } from 'url';
+ import { dismissConsent, handleVerification } from './consent.mjs';
++import { SELECTORS } from './selectors.mjs';
+ 
+ const __dir = dirname(fileURLToPath(import.meta.url));
+-const CDP = join(homedir(), '.claude', 'skills', 'chrome-cdp', 'scripts', 'cdp.mjs');
++const CDP = join(__dir, '..', 'cdp.mjs');
+ const PAGES_CACHE = `${tmpdir().replace(/\\/g, '/')}/cdp-pages.json`;
+ 
+ const COPY_POLL_INTERVAL = 600;
+-const COPY_TIMEOUT = 120000;    // wait up to 2 min for copy button to appear
++const COPY_TIMEOUT = 120000;
++
++const S = SELECTORS.gemini;
+ 
+ // ---------------------------------------------------------------------------
+ 
+@@ -53,7 +56,7 @@ async function getOrOpenTab(tabPrefix) {
+ async function typeIntoGemini(tab, text) {
+   await cdp(['eval', tab, `
+     (function(t) {
+-      var el = document.querySelector('rich-textarea .ql-editor');
++      var el = document.querySelector('${S.input}');
+       if (!el) return false;
+       el.focus();
+       document.execCommand('insertText', false, t);
+@@ -93,7 +96,7 @@ async function waitForCopyButton(tab) {
+   while (Date.now() < deadline) {
+     await new Promise(r => setTimeout(r, COPY_POLL_INTERVAL));
+     const found = await cdp(['eval', tab,
+-      `!!document.querySelector('button[aria-label="Copy"]')`
++      `!!document.querySelector('${S.copyButton}')`
+     ]).catch(() => 'false');
+     if (found === 'true') return;
+   }
+@@ -102,37 +105,61 @@ async function waitForCopyButton(tab) {
+ 
+ async function extractAnswer(tab) {
+   // Click copy button → our interceptor captures the text.
+-  await cdp(['eval', tab, `document.querySelector('button[aria-label="Copy"]')?.click()`]);
++  await cdp(['eval', tab, `document.querySelector('${S.copyButton}')?.click()`]);
+   await new Promise(r => setTimeout(r, 400));
+ 
+   const answer = await cdp(['eval', tab, `window.__geminiClipboard || ''`]);
+   if (!answer) throw new Error('Clipboard interceptor returned empty text');
+ 
+-  // Sources: click the first citation button to open the side panel, then extract URLs.
+-  const hasCitations = await cdp(['eval', tab,
+-    `!!document.querySelector('button[aria-label*="citation"]')`
+-  ]).catch(() => 'false');
++  // Click "Sources" button to open the sidebar with proper source cards
++  const sourceExcludeFilter = S.sourcesExclude.map(e => `!s.url.includes('${e}')`).join(' && ');
++  await cdp(['eval', tab, `
++    (function() {
++      var btn = document.querySelector('${S.sourcesSidebarButton}');
++      if (!btn) btn = Array.from(document.querySelectorAll('button')).find(b => b.innerText?.trim() === 'Sources');
++      if (btn) { btn.click(); return 'clicked'; }
++      return 'not-found';
++    })()
++  `]).catch(() => 'not-found');
+ 
+-  if (hasCitations === 'true') {
+-    await cdp(['eval', tab, `document.querySelector('button[aria-label*="citation"]')?.click()`]);
+-    await new Promise(r => setTimeout(r, 1500));
+-  }
++  // Wait for the sources sidebar to populate
++  await new Promise(r => setTimeout(r, 1500));
+ 
++  // Extract sources from the sidebar panel (has proper URLs + titles)
+   const raw = await cdp(['eval', tab, `
+     (function() {
+-      var sources = Array.from(document.querySelectorAll('a[href^="http"]'))
++      // Find the Sources sidebar container by heading
++      var headings = Array.from(document.querySelectorAll('h1, h2, h3, [class*="header"]'));
++      var sourceHeading = headings.find(h => h.innerText?.trim() === 'Sources');
++      if (sourceHeading) {
++        var container = sourceHeading.closest('.container') || sourceHeading.parentElement;
++        var links = Array.from(container.querySelectorAll('a[href^="http"]'))
++          .map(a => ({ url: a.href.split('#')[0], title: a.innerText?.trim().split('\\n')[0] || '' }))
++          .filter(s => s.url && ${sourceExcludeFilter})
++          .filter((v, i, arr) => arr.findIndex(x => x.url === v.url) === i)
++          .slice(0, 8);
++        return JSON.stringify(links);
++      }
++      // Fallback: inline source cards with aria-labels
++      var cards = Array.from(document.querySelectorAll('${S.citationButtonPattern}'));
++      if (cards.length) {
++        return JSON.stringify(cards.map(b => {
++          var label = b.getAttribute('aria-label') || '';
++          var name = label.match(${S.citationNameRegex})?.[1] || label;
++          return { url: '', title: name };
++        }));
++      }
++      // Last resort: page-wide links (may include footer junk)
++      return JSON.stringify(Array.from(document.querySelectorAll('a[href^="http"]'))
+         .map(a => ({ url: a.href.split('#')[0], title: a.innerText?.trim().split('\\n')[0] || '' }))
+-        .filter(s => s.url && !s.url.includes('google.') && !s.url.includes('gemini.google') && !s.url.includes('gstatic') && !s.url.includes('googleapis'))
++        .filter(s => s.url && !s.url.includes('gemini.google') && !s.url.includes('gstatic') && !s.url.includes('google.com/search'))
+         .filter((v, i, arr) => arr.findIndex(x => x.url === v.url) === i)
+-        .slice(0, 8);
+-      return JSON.stringify(sources);
++        .slice(0, 8));
+     })()
+   `]).catch(() => '[]');
+   const sources = JSON.parse(raw);
+ 
+-  // Strip Gemini promotional footer text that sometimes appears at the end.
+-  const clean = answer.trim().replace(/\n+By the way,.*$/s, '').replace(/\n+To unlock.*$/s, '').trim();
+-  return { answer: clean, sources };
++  return { answer: answer.trim(), sources };
+ }
+ 
+ // ---------------------------------------------------------------------------
+@@ -165,7 +192,7 @@ async function main() {
+     // Wait for input to be ready
+     const deadline = Date.now() + 10000;
+     while (Date.now() < deadline) {
+-      const ready = await cdp(['eval', tab, `!!document.querySelector('rich-textarea .ql-editor')`]).catch(() => 'false');
++      const ready = await cdp(['eval', tab, `!!document.querySelector('${S.input}')`]).catch(() => 'false');
+       if (ready === 'true') break;
+       await new Promise(r => setTimeout(r, 400));
+     }
+@@ -175,7 +202,7 @@ async function main() {
+     await typeIntoGemini(tab, query);
+     await new Promise(r => setTimeout(r, 400));
+ 
+-    await cdp(['eval', tab, `document.querySelector('button[aria-label*="Send"]')?.click()`]);
++    await cdp(['eval', tab, `document.querySelector('${S.sendButton}')?.click()`]);
+ 
+     await waitForCopyButton(tab);
+ 
+diff --git a/extractors/google-ai.mjs "b/C:\\Users\\R3LiC\\Desktop\\GreedySearch-pi\\extractors/google-ai.mjs"
+index 8525372..b84f341 100644
+--- a/extractors/google-ai.mjs
++++ "b/C:\\Users\\R3LiC\\Desktop\\GreedySearch-pi\\extractors/google-ai.mjs"
+@@ -10,13 +10,14 @@
+ 
+ import { readFileSync, existsSync } from 'fs';
+ import { spawn } from 'child_process';
+-import { tmpdir, homedir } from 'os';
++import { tmpdir } from 'os';
+ import { join, dirname } from 'path';
+ import { fileURLToPath } from 'url';
+ import { dismissConsent, handleVerification } from './consent.mjs';
+-const __dir = dirname(fileURLToPath(import.meta.url));
++import { SELECTORS } from './selectors.mjs';
+ 
+-const CDP = join(homedir(), '.claude', 'skills', 'chrome-cdp', 'scripts', 'cdp.mjs');
++const __dir = dirname(fileURLToPath(import.meta.url));
++const CDP = join(__dir, '..', 'cdp.mjs');
+ const PAGES_CACHE = `${tmpdir().replace(/\\/g, '/')}/cdp-pages.json`;
+ 
+ const STREAM_POLL_INTERVAL = 600;
+@@ -24,6 +25,8 @@ const STREAM_STABLE_ROUNDS = 3;
+ const STREAM_TIMEOUT = 45000;
+ const MIN_ANSWER_LENGTH = 50;
+ 
++const S = SELECTORS.google;
++
+ // ---------------------------------------------------------------------------
+ 
+ function cdp(args, timeoutMs = 30000) {
+@@ -66,7 +69,7 @@ async function waitForStreamComplete(tab) {
+     await new Promise(r => setTimeout(r, STREAM_POLL_INTERVAL));
+ 
+     const lenStr = await cdp(['eval', tab,
+-      `(document.querySelector('.pWvJNd')?.innerText?.length || 0) + ''`
++      `(document.querySelector('${S.answerContainer}')?.innerText?.length || 0) + ''`
+     ]).catch(() => '0');
+ 
+     const len = parseInt(lenStr) || 0;
+@@ -85,17 +88,15 @@ async function waitForStreamComplete(tab) {
+ }
+ 
+ async function extractAnswer(tab) {
++  const excludeFilter = S.sourceExclude.map(e => `!a.href.includes('${e}')`).join(' && ');
+   const raw = await cdp(['eval', tab, `
+     (function() {
+-      var el = document.querySelector('.pWvJNd');
++      var el = document.querySelector('${S.answerContainer}');
+       if (!el) return JSON.stringify({ answer: '', sources: [] });
+       var answer = el.innerText.trim();
+-      var sources = Array.from(document.querySelectorAll('a[href^="http"]'))
+-        .filter(a => !a.href.includes('google.') && !a.href.includes('gstatic') && !a.href.includes('googleapis'))
+-        .map(a => ({
+-          url: a.href.split('#')[0],
+-          title: (a.innerText?.trim().split('\\n')[0] || a.parentElement?.innerText?.trim().split('\\n')[0] || '').slice(0, 100)
+-        }))
++      var sources = Array.from(document.querySelectorAll('${S.sourceLink}'))
++        .filter(a => ${excludeFilter})
++        .map(a => ({ url: a.href.split('#')[0], title: (a.closest('${S.sourceHeadingParent}')?.querySelector('h3, [role=heading]')?.innerText || a.innerText?.trim().split('\\n')[0] || '').slice(0, 100) }))
+         .filter(s => s.url && s.url.length > 10)
+         .filter((v, i, arr) => arr.findIndex(x => x.url === v.url) === i)
+         .slice(0, 10);
+diff --git a/extractors/mistral.mjs b/extractors/mistral.mjs
+deleted file mode 100644
+index 127f909..0000000
+--- a/extractors/mistral.mjs
++++ /dev/null
+@@ -1,171 +0,0 @@
+-#!/usr/bin/env node
+-// extractors/mistral.mjs
+-// Navigate chat.mistral.ai/chat, submit query, wait for answer, return clean answer.
+-//
+-// Usage:
+-//   node extractors/mistral.mjs "<query>" [--tab <prefix>]
+-//
+-// Output (stdout): JSON { answer, sources, query, url }
+-// Errors go to stderr only — stdout is always clean JSON for piping.
+-
+-import { readFileSync, existsSync } from 'fs';
+-import { spawn } from 'child_process';
+-import { tmpdir, homedir } from 'os';
+-import { join } from 'path';
+-import { dismissConsent } from './consent.mjs';
+-
+-const CDP = join(homedir(), '.claude', 'skills', 'chrome-cdp', 'scripts', 'cdp.mjs');
+-const PAGES_CACHE = `${tmpdir().replace(/\\/g, '/')}/cdp-pages.json`;
+-
+-const COPY_POLL_INTERVAL = 600;
+-const COPY_TIMEOUT = 60000;
+-
+-// ---------------------------------------------------------------------------
+-
+-function cdp(args, timeoutMs = 30000) {
+-  return new Promise((resolve, reject) => {
+-    const proc = spawn('node', [CDP, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+-    let out = '', err = '';
+-    proc.stdout.on('data', d => out += d);
+-    proc.stderr.on('data', d => err += d);
+-    const timer = setTimeout(() => { proc.kill(); reject(new Error(`cdp timeout: ${args[0]}`)); }, timeoutMs);
+-    proc.on('close', code => {
+-      clearTimeout(timer);
+-      if (code !== 0) reject(new Error(err.trim() || `cdp exit ${code}`));
+-      else resolve(out.trim());
+-    });
+-  });
+-}
+-
+-async function getOrOpenTab(tabPrefix) {
+-  if (tabPrefix) return tabPrefix;
+-  if (existsSync(PAGES_CACHE)) {
+-    const pages = JSON.parse(readFileSync(PAGES_CACHE, 'utf8'));
+-    const existing = pages.find(p => p.url.includes('chat.mistral.ai'));
+-    if (existing) return existing.targetId.slice(0, 8);
+-  }
+-  const list = await cdp(['list']);
+-  return list.split('\n')[0].slice(0, 8);
+-}
+-
+-async function injectClipboardInterceptor(tab) {
+-  await cdp(['eval', tab, `
+-    window.__mistralClipboard = null;
+-    const _origWriteText = navigator.clipboard.writeText.bind(navigator.clipboard);
+-    navigator.clipboard.writeText = function(text) {
+-      window.__mistralClipboard = text;
+-      return _origWriteText(text);
+-    };
+-    const _origWrite = navigator.clipboard.write.bind(navigator.clipboard);
+-    navigator.clipboard.write = async function(items) {
+-      try {
+-        for (const item of items) {
+-          if (item.types && item.types.includes('text/plain')) {
+-            const blob = await item.getType('text/plain');
+-            window.__mistralClipboard = await blob.text();
+-            break;
+-          }
+-        }
+-      } catch(e) {}
+-      return _origWrite(items);
+-    };
+-  `]);
+-}
+-
+-async function waitForResponseCopyButton(tab) {
+-  // The "Like" button appears alongside the AI response copy button — only after
+-  // streaming is complete. The user-message "Copy to clipboard" appears instantly,
+-  // so we use "Like" as the real completion signal.
+-  const deadline = Date.now() + COPY_TIMEOUT;
+-  while (Date.now() < deadline) {
+-    await new Promise(r => setTimeout(r, COPY_POLL_INTERVAL));
+-    const found = await cdp(['eval', tab,
+-      `!!document.querySelector('button[aria-label="Like"]')`
+-    ]).catch(() => 'false');
+-    if (found === 'true') return;
+-  }
+-  throw new Error(`Mistral response did not complete within ${COPY_TIMEOUT}ms`);
+-}
+-
+-async function extractAnswer(tab) {
+-  // Re-inject interceptor here — Mistral SPA-navigates to a conversation URL
+-  // after send, which destroys any interceptor injected before the query.
+-  await injectClipboardInterceptor(tab);
+-
+-  // Click the copy button that sits in the same action bar as "Like"
+-  await cdp(['eval', tab, `
+-    (function() {
+-      var like = document.querySelector('button[aria-label="Like"]');
+-      if (!like) return;
+-      var bar = like.closest('div');
+-      var copyBtn = bar && bar.querySelector('button[aria-label="Copy to clipboard"]');
+-      if (copyBtn) copyBtn.click();
+-    })()
+-  `]);
+-  await new Promise(r => setTimeout(r, 400));
+-
+-  const answer = await cdp(['eval', tab, `window.__mistralClipboard || ''`]);
+-  if (!answer) throw new Error('Clipboard interceptor returned empty text');
+-
+-  // Mistral free tier doesn't cite web sources
+-  return { answer: answer.trim(), sources: [] };
+-}
+-
+-// ---------------------------------------------------------------------------
+-
+-async function main() {
+-  const args = process.argv.slice(2);
+-  if (!args.length || args[0] === '--help') {
+-    process.stderr.write('Usage: node extractors/mistral.mjs "<query>" [--tab <prefix>]\n');
+-    process.exit(1);
+-  }
+-
+-  const short = args.includes('--short');
+-  const rest  = args.filter(a => a !== '--short');
+-  const tabFlagIdx = rest.indexOf('--tab');
+-  const tabPrefix = tabFlagIdx !== -1 ? rest[tabFlagIdx + 1] : null;
+-  const query = tabFlagIdx !== -1
+-    ? rest.filter((_, i) => i !== tabFlagIdx && i !== tabFlagIdx + 1).join(' ')
+-    : rest.join(' ');
+-
+-  try {
+-    await cdp(['list']);
+-    const tab = await getOrOpenTab(tabPrefix);
+-
+-    // Fresh conversation each search
+-    await cdp(['nav', tab, 'https://chat.mistral.ai/chat'], 35000);
+-    await new Promise(r => setTimeout(r, 1500));
+-    await dismissConsent(tab, cdp);
+-
+-    // Wait for textarea to be ready (up to 8s)
+-    const deadline = Date.now() + 8000;
+-    while (Date.now() < deadline) {
+-      const found = await cdp(['eval', tab, `!!document.querySelector('textarea')`]).catch(() => 'false');
+-      if (found === 'true') break;
+-      await new Promise(r => setTimeout(r, 400));
+-    }
+-    await new Promise(r => setTimeout(r, 300));
+-
+-    await cdp(['click', tab, 'textarea']);
+-    await new Promise(r => setTimeout(r, 300));
+-    await cdp(['type', tab, query]);
+-    await new Promise(r => setTimeout(r, 400));
+-
+-    // Click send button
+-    await cdp(['eval', tab, `document.querySelector('button[aria-label="Send question"]')?.click()`]);
+-
+-    await waitForResponseCopyButton(tab);
+-
+-    const { answer, sources } = await extractAnswer(tab);
+-    if (!answer) throw new Error('No answer extracted from Mistral');
+-    const out = short ? answer.slice(0, 300).replace(/\s+\S*$/, '') + '…' : answer;
+-
+-    const finalUrl = await cdp(['eval', tab, 'document.location.href']).catch(() => 'https://chat.mistral.ai/chat');
+-    process.stdout.write(JSON.stringify({ query, url: finalUrl, answer: out, sources }, null, 2) + '\n');
+-  } catch (e) {
+-    process.stderr.write(`Error: ${e.message}\n`);
+-    process.exit(1);
+-  }
+-}
+-
+-main();
+diff --git a/extractors/perplexity.mjs "b/C:\\Users\\R3LiC\\Desktop\\GreedySearch-pi\\extractors/perplexity.mjs"
+index d5c0d24..4059eb7 100644
+--- a/extractors/perplexity.mjs
++++ "b/C:\\Users\\R3LiC\\Desktop\\GreedySearch-pi\\extractors/perplexity.mjs"
+@@ -10,16 +10,21 @@
+ 
+ import { readFileSync, existsSync } from 'fs';
+ import { spawn } from 'child_process';
+-import { tmpdir, homedir } from 'os';
+-import { join } from 'path';
++import { tmpdir } from 'os';
++import { join, dirname } from 'path';
++import { fileURLToPath } from 'url';
+ import { dismissConsent } from './consent.mjs';
++import { SELECTORS } from './selectors.mjs';
+ 
+-const CDP = join(homedir(), '.claude', 'skills', 'chrome-cdp', 'scripts', 'cdp.mjs');
++const __dir = dirname(fileURLToPath(import.meta.url));
++const CDP = join(__dir, '..', 'cdp.mjs');
+ const PAGES_CACHE = `${tmpdir().replace(/\\/g, '/')}/cdp-pages.json`;
+ 
+ const COPY_POLL_INTERVAL = 600;
+ const COPY_TIMEOUT = 30000;
+ 
++const S = SELECTORS.perplexity;
++
+ // ---------------------------------------------------------------------------
+ 
+ function cdp(args, timeoutMs = 30000) {
+@@ -85,7 +90,7 @@ async function waitForCopyButton(tab) {
+   while (Date.now() < deadline) {
+     await new Promise(r => setTimeout(r, COPY_POLL_INTERVAL));
+     const found = await cdp(['eval', tab,
+-      `!!document.querySelector('button[aria-label="Copy"]')`
++      `!!document.querySelector('${S.copyButton}')`
+     ]).catch(() => 'false');
+     if (found === 'true') return;
+   }
+@@ -93,7 +98,7 @@ async function waitForCopyButton(tab) {
+ }
+ 
+ async function extractAnswer(tab) {
+-  await cdp(['eval', tab, `document.querySelector('button[aria-label="Copy"]')?.click()`]);
++  await cdp(['eval', tab, `document.querySelector('${S.copyButton}')?.click()`]);
+   await new Promise(r => setTimeout(r, 400));
+ 
+   const answer = await cdp(['eval', tab, `window.__pplxClipboard || ''`]);
+@@ -101,26 +106,12 @@ async function extractAnswer(tab) {
+ 
+   const raw = await cdp(['eval', tab, `
+     (function() {
+-      // Perplexity no longer puts URLs in DOM attributes — they live in React fiber props.
+-      var badges = Array.from(document.querySelectorAll('span.text-3xs.rounded-badge'));
+-      var seen = new Set();
+-      var sources = [];
+-      for (var b of badges) {
+-        var fk = Object.keys(b).find(function(k){ return k.startsWith('__reactFiber'); });
+-        if (!fk) continue;
+-        var cur = b[fk];
+-        for (var i = 0; i < 15; i++) {
+-          if (!cur) break;
+-          var p = cur.memoizedProps;
+-          if (p && p.url && p.url.startsWith('http') && !seen.has(p.url)) {
+-            seen.add(p.url);
+-            sources.push({ url: p.url, title: p.domain || p.source || '' });
+-            break;
+-          }
+-          cur = cur.return;
+-        }
+-      }
+-      return JSON.stringify(sources.slice(0, 10));
++      var sources = Array.from(document.querySelectorAll('${S.sourceItem}'))
++        .map(el => ({ url: el.getAttribute('data-pplx-citation-url'), title: el.querySelector('${S.sourceLink}')?.innerText?.trim() || '' }))
++        .filter(s => s.url)
++        .filter((v, i, arr) => arr.findIndex(x => x.url === v.url) === i)
++        .slice(0, 10);
++      return JSON.stringify(sources);
+     })()
+   `]).catch(() => '[]');
+   const sources = JSON.parse(raw);
+@@ -156,23 +147,23 @@ async function main() {
+     await cdp(['nav', tab, 'https://www.perplexity.ai/'], 35000);
+     await dismissConsent(tab, cdp);
+ 
+-    // Wait for React app to mount #ask-input (up to 8s)
++    // Wait for React app to mount input (up to 8s)
+     const deadline = Date.now() + 8000;
+     while (Date.now() < deadline) {
+-      const found = await cdp(['eval', tab, `!!document.querySelector('#ask-input')`]).catch(() => 'false');
++      const found = await cdp(['eval', tab, `!!document.querySelector('${S.input}')`]).catch(() => 'false');
+       if (found === 'true') break;
+       await new Promise(r => setTimeout(r, 400));
+     }
+     await new Promise(r => setTimeout(r, 300));
+ 
+     await injectClipboardInterceptor(tab);
+-    await cdp(['click', tab, '#ask-input']);
++    await cdp(['click', tab, S.input]);
+     await new Promise(r => setTimeout(r, 400));
+     await cdp(['type', tab, query]);
+     await new Promise(r => setTimeout(r, 400));
+     // Submit with Enter (most reliable across Chrome instances)
+     await cdp(['eval', tab,
+-      `document.querySelector('#ask-input')?.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,keyCode:13})), 'ok'`
++      `document.querySelector('${S.input}')?.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,keyCode:13})), 'ok'`
+     ]);
+ 
+     await waitForCopyButton(tab);
+diff --git "a/C:\\Users\\R3LiC\\Desktop\\GreedySearch-pi\\extractors/selectors.mjs" "b/C:\\Users\\R3LiC\\Desktop\\GreedySearch-pi\\extractors/selectors.mjs"
+new file mode 100644
+index 0000000..101f483
+--- /dev/null
++++ "b/C:\\Users\\R3LiC\\Desktop\\GreedySearch-pi\\extractors/selectors.mjs"
+@@ -0,0 +1,52 @@
++// extractors/selectors.mjs
++// Centralized CSS selectors for all engines.
++// Update selectors here when a site changes its UI.
++
++export const SELECTORS = {
++  // ──────────────────────────────────────────────
++  // Perplexity (perplexity.ai)
++  // ──────────────────────────────────────────────
++  perplexity: {
++    input: '#ask-input',
++    copyButton: 'button[aria-label="Copy"]',
++    sourceItem: '[data-pplx-citation-url]',
++    sourceLink: 'a',
++    consent: '#onetrust-accept-btn-handler',
++  },
++
++  // ──────────────────────────────────────────────
++  // Bing Copilot (copilot.microsoft.com)
++  // ──────────────────────────────────────────────
++  bing: {
++    input: '#userInput',
++    copyButton: 'button[data-testid="copy-ai-message-button"]',
++    sourceLink: 'a[href^="http"][target="_blank"]',
++    sourceExclude: 'copilot.microsoft.com',
++    consent: '#onetrust-accept-btn-handler',
++  },
++
++  // ──────────────────────────────────────────────
++  // Google AI Mode (google.com/search?udm=50)
++  // ──────────────────────────────────────────────
++  google: {
++    answerContainer: '.pWvJNd',
++    sourceLink: 'a[href^="http"]',
++    sourceExclude: ['google.', 'gstatic', 'googleapis'],
++    sourceHeadingParent: '[data-snhf]',
++    consent: '#L2AGLb, button[jsname="b3VHJd"], .tHlp8d',
++  },
++
++  // ──────────────────────────────────────────────
++  // Gemini (gemini.google.com/app)
++  // ──────────────────────────────────────────────
++  gemini: {
++    input: 'rich-textarea .ql-editor',
++    copyButton: 'button[aria-label="Copy"]',
++    sendButton: 'button[aria-label*="Send"]',
++    sourcesSidebarButton: 'button.legacy-sources-sidebar-button',
++    sourcesExclude: ['gemini.google', 'gstatic', 'google.com/search'],
++    citationButtonPattern: 'button[aria-label*="citation from"]',
++    // For parsing citation aria-labels: "View source details for citation from {name}. Opens side panel."
++    citationNameRegex: /from\s+(.+?)\.\s/,
++  },
++};
+diff --git a/extractors/stackoverflow-ai.mjs b/extractors/stackoverflow-ai.mjs
+deleted file mode 100644
+index 0af4a78..0000000
+--- a/extractors/stackoverflow-ai.mjs
++++ /dev/null
+@@ -1,168 +0,0 @@
+-#!/usr/bin/env node
+-// extractors/stackoverflow-ai.mjs
+-// Navigate Stack Overflow AI Assist, wait for answer, return clean answer + sources.
+-//
+-// Usage:
+-//   node extractors/stackoverflow-ai.mjs "<query>" [--tab <prefix>]
+-//
+-// Output (stdout): JSON { answer, sources, query, url }
+-// Errors go to stderr only — stdout is always clean JSON for piping.
+-
+-import { readFileSync, existsSync } from 'fs';
+-import { spawn } from 'child_process';
+-import { tmpdir, homedir } from 'os';
+-import { join } from 'path';
+-import { dismissConsent } from './consent.mjs';
+-
+-const CDP = join(homedir(), '.claude', 'skills', 'chrome-cdp', 'scripts', 'cdp.mjs');
+-const PAGES_CACHE = `${tmpdir().replace(/\\/g, '/')}/cdp-pages.json`;
+-
+-const STREAM_POLL_INTERVAL = 700;
+-const STREAM_STABLE_ROUNDS = 3;
+-const STREAM_TIMEOUT = 60000;
+-const MIN_ANSWER_LENGTH = 50;
+-
+-// ---------------------------------------------------------------------------
+-
+-function cdp(args, timeoutMs = 30000) {
+-  return new Promise((resolve, reject) => {
+-    const proc = spawn('node', [CDP, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+-    let out = '';
+-    let err = '';
+-    proc.stdout.on('data', d => out += d);
+-    proc.stderr.on('data', d => err += d);
+-    const timer = setTimeout(() => { proc.kill(); reject(new Error(`cdp timeout: ${args[0]}`)); }, timeoutMs);
+-    proc.on('close', code => {
+-      clearTimeout(timer);
+-      if (code !== 0) reject(new Error(err.trim() || `cdp exit ${code}`));
+-      else resolve(out.trim());
+-    });
+-  });
+-}
+-
+-async function getOrOpenTab(tabPrefix) {
+-  if (tabPrefix) return tabPrefix;
+-
+-  if (existsSync(PAGES_CACHE)) {
+-    const pages = JSON.parse(readFileSync(PAGES_CACHE, 'utf8'));
+-    const existing = pages.find(p => p.url.includes('stackoverflow.com'));
+-    if (existing) return existing.targetId.slice(0, 8);
+-  }
+-
+-  const list = await cdp(['list']);
+-  const firstLine = list.split('\n')[0];
+-  if (!firstLine) throw new Error('No Chrome tabs found. Is Chrome running with --remote-debugging-port=9222?');
+-  return firstLine.slice(0, 8);
+-}
+-
+-async function waitForStreamComplete(tab) {
+-  const deadline = Date.now() + STREAM_TIMEOUT;
+-  let stableCount = 0;
+-  let lastLen = -1;
+-
+-  while (Date.now() < deadline) {
+-    await new Promise(r => setTimeout(r, STREAM_POLL_INTERVAL));
+-
+-    const lenStr = await cdp(['eval', tab, `
+-      (function(){
+-        var msgs = Array.from(document.querySelectorAll('.s-prose.assistantMessage'));
+-        var last = msgs[msgs.length - 1];
+-        return (last?.innerText?.length || 0) + '';
+-      })()
+-    `]).catch(() => '0');
+-
+-    const len = parseInt(lenStr) || 0;
+-
+-    if (len >= MIN_ANSWER_LENGTH && len === lastLen) {
+-      stableCount++;
+-      if (stableCount >= STREAM_STABLE_ROUNDS) return len;
+-    } else {
+-      stableCount = 0;
+-      lastLen = len;
+-    }
+-  }
+-
+-  if (lastLen >= MIN_ANSWER_LENGTH) return lastLen;
+-  throw new Error(`Stack Overflow AI answer did not stabilise within ${STREAM_TIMEOUT}ms`);
+-}
+-
+-async function extractAnswer(tab) {
+-  const raw = await cdp(['eval', tab, `
+-    (function() {
+-      var msgs = Array.from(document.querySelectorAll('.s-prose.assistantMessage'));
+-      var el = msgs[msgs.length - 1];
+-      if (!el) return JSON.stringify({ answer: '', sources: [] });
+-      var answer = el.innerText.trim();
+-      // Source cards appear as sibling elements with links to SO questions/docs
+-      var sources = Array.from(document.querySelectorAll('.d-flex.g16.px2 a[href], .s-card a[href]'))
+-        .map(a => ({ url: a.href, title: a.innerText?.trim().split('\\n')[0]?.slice(0, 100) || '' }))
+-        .filter(s => s.url && s.url.startsWith('http'))
+-        .filter(s => !s.url.includes('/users/') && !s.url.includes('/questions/ask'))
+-        .filter((v, i, arr) => arr.findIndex(x => x.url === v.url) === i)
+-        .slice(0, 10);
+-      return JSON.stringify({ answer, sources });
+-    })()
+-  `]);
+-  return JSON.parse(raw);
+-}
+-
+-// ---------------------------------------------------------------------------
+-
+-async function main() {
+-  const args = process.argv.slice(2);
+-  if (!args.length || args[0] === '--help') {
+-    process.stderr.write('Usage: node extractors/stackoverflow-ai.mjs "<query>" [--tab <prefix>]\n');
+-    process.exit(1);
+-  }
+-
+-  const tabFlagIdx = args.indexOf('--tab');
+-  const tabPrefix = tabFlagIdx !== -1 ? args[tabFlagIdx + 1] : null;
+-  const query = tabFlagIdx !== -1
+-    ? args.filter((_, i) => i !== tabFlagIdx && i !== tabFlagIdx + 1).join(' ')
+-    : args.join(' ');
+-
+-  try {
+-    await cdp(['list']);
+-    const tab = await getOrOpenTab(tabPrefix);
+-
+-    await cdp(['nav', tab, 'https://stackoverflow.com/ai-assist'], 35000);
+-    await dismissConsent(tab, cdp);
+-
+-    // Wait for React app to mount the textarea (up to 8s)
+-    const deadline = Date.now() + 8000;
+-    while (Date.now() < deadline) {
+-      const found = await cdp(['eval', tab, `!!document.querySelector('textarea.s-textarea')`]).catch(() => 'false');
+-      if (found === 'true') break;
+-      await new Promise(r => setTimeout(r, 400));
+-    }
+-    await new Promise(r => setTimeout(r, 800)); // extra settle time for SO's React app
+-
+-    // Set value and submit in one eval — prevents React re-render clearing the value between calls
+-    await cdp(['eval', tab, `
+-      (function(){
+-        var ta = document.querySelector('textarea.s-textarea');
+-        if (!ta) return;
+-        ta.focus();
+-        var setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+-        setter.call(ta, ${JSON.stringify(query)});
+-        ta.dispatchEvent(new Event('input', { bubbles: true }));
+-        ta.dispatchEvent(new Event('change', { bubbles: true }));
+-        // Submit immediately before React can re-render and clear the field
+-        ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, keyCode: 13 }));
+-      })()
+-    `]);
+-
+-    await waitForStreamComplete(tab);
+-
+-    const { answer, sources } = await extractAnswer(tab);
+-    if (!answer) throw new Error('No answer extracted — Stack Overflow AI may not have responded');
+-
+-    const finalUrl = await cdp(['eval', tab, 'document.location.href']).catch(() => '');
+-    process.stdout.write(JSON.stringify({ query, url: finalUrl, answer, sources }, null, 2) + '\n');
+-  } catch (e) {
+-    process.stderr.write(`Error: ${e.message}\n`);
+-    process.exit(1);
+-  }
+-}
+-
+-main();

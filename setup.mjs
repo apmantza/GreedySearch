@@ -14,9 +14,7 @@ import { execSync } from 'child_process';
 const __dir   = dirname(fileURLToPath(import.meta.url));
 const SKILLS  = join(homedir(), '.claude', 'skills');
 const SKILL_DIR = join(SKILLS, 'greedysearch');
-const CDP_DIR   = join(SKILLS, 'chrome-cdp');
 const CLAUDE_MD = join(homedir(), '.claude', 'CLAUDE.md');
-const CDP_REPO  = 'https://github.com/pasky/chrome-cdp-skill';
 
 const CHECK_ONLY = process.argv.includes('--check');
 
@@ -36,26 +34,6 @@ const [major] = process.versions.node.split('.').map(Number);
 if (major < 18) fail(`Node.js 18+ required (found ${process.versions.node})`);
 log(`Node.js ${process.versions.node}`);
 
-// 2. git (needed to clone chrome-cdp if missing)
-try { execSync('git --version', { stdio: 'ignore' }); log('git available'); }
-catch { fail('git not found — required to install chrome-cdp dependency'); }
-
-// 3. chrome-cdp skill
-if (existsSync(join(CDP_DIR, 'scripts', 'cdp.mjs'))) {
-  log('chrome-cdp skill already installed');
-} else if (CHECK_ONLY) {
-  warn(`chrome-cdp skill missing at ${CDP_DIR}`);
-} else {
-  section('Installing chrome-cdp dependency...');
-  mkdirSync(SKILLS, { recursive: true });
-  try {
-    execSync(`git clone ${CDP_REPO} "${CDP_DIR}"`, { stdio: 'inherit' });
-    log('chrome-cdp cloned');
-  } catch {
-    fail(`Failed to clone ${CDP_REPO} — check your internet connection`);
-  }
-}
-
 // ---------------------------------------------------------------------------
 
 section('Installing GreedySearch skill...');
@@ -67,7 +45,7 @@ if (CHECK_ONLY) {
   mkdirSync(SKILL_DIR, { recursive: true });
 
   // Copy scripts
-  const filesToCopy = ['search.mjs', 'launch.mjs', 'SKILL.md'];
+  const filesToCopy = ['cdp.mjs', 'search.mjs', 'launch.mjs', 'coding-task.mjs', 'SKILL.md'];
   for (const f of filesToCopy) {
     const src = join(__dir, f);
     if (!existsSync(src)) fail(`Missing source file: ${f}`);

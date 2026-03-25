@@ -10,15 +10,20 @@
 
 import { readFileSync, existsSync } from 'fs';
 import { spawn } from 'child_process';
-import { tmpdir, homedir } from 'os';
-import { join } from 'path';
+import { tmpdir } from 'os';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { dismissConsent } from './consent.mjs';
+import { SELECTORS } from './selectors.mjs';
 
-const CDP = join(homedir(), '.claude', 'skills', 'chrome-cdp', 'scripts', 'cdp.mjs');
+const __dir = dirname(fileURLToPath(import.meta.url));
+const CDP = join(__dir, '..', 'cdp.mjs');
 const PAGES_CACHE = `${tmpdir().replace(/\\/g, '/')}/cdp-pages.json`;
 
 const COPY_POLL_INTERVAL = 600;
-const COPY_TIMEOUT = 30000;
+const COPY_TIMEOUT = 60000;
+
+const S = SELECTORS.perplexity;
 
 // ---------------------------------------------------------------------------
 
@@ -80,50 +85,43 @@ async function injectClipboardInterceptor(tab) {
   `]);
 }
 
-async function waitForCopyButton(tab) {
+async function waitForGenerationToFinish(tab) {
   const deadline = Date.now() + COPY_TIMEOUT;
+  let lastLen = -1;
+  let stableCount = 0;
+
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, COPY_POLL_INTERVAL));
-    const found = await cdp(['eval', tab,
-      `!!document.querySelector('button[aria-label="Copy"]')`
-    ]).catch(() => 'false');
-    if (found === 'true') return;
+    
+    const lenStr = await cdp(['eval', tab, 'document.body.innerText.length']).catch(() => '0');
+    const currentLen = parseInt(lenStr) || 0;
+    
+    if (currentLen > 0) {
+      if (currentLen === lastLen) {
+        stableCount++;
+        // If length is stable for ~3 polling intervals (~1.8 seconds), streaming has finished.
+        if (stableCount >= 3) return;
+      } else {
+        lastLen = currentLen;
+        stableCount = 0;
+      }
+    }
   }
-  throw new Error(`Perplexity copy button did not appear within ${COPY_TIMEOUT}ms`);
+  throw new Error(`Perplexity generation did not finish within ${COPY_TIMEOUT}ms`);
 }
 
 async function extractAnswer(tab) {
-  await cdp(['eval', tab, `document.querySelector('button[aria-label="Copy"]')?.click()`]);
+  await cdp(['eval', tab, `document.querySelector('${S.copyButton}')?.click()`]);
   await new Promise(r => setTimeout(r, 400));
 
   const answer = await cdp(['eval', tab, `window.__pplxClipboard || ''`]);
   if (!answer) throw new Error('Clipboard interceptor returned empty text');
 
-  const raw = await cdp(['eval', tab, `
-    (function() {
-      // Perplexity no longer puts URLs in DOM attributes — they live in React fiber props.
-      var badges = Array.from(document.querySelectorAll('span.text-3xs.rounded-badge'));
-      var seen = new Set();
-      var sources = [];
-      for (var b of badges) {
-        var fk = Object.keys(b).find(function(k){ return k.startsWith('__reactFiber'); });
-        if (!fk) continue;
-        var cur = b[fk];
-        for (var i = 0; i < 15; i++) {
-          if (!cur) break;
-          var p = cur.memoizedProps;
-          if (p && p.url && p.url.startsWith('http') && !seen.has(p.url)) {
-            seen.add(p.url);
-            sources.push({ url: p.url, title: p.domain || p.source || '' });
-            break;
-          }
-          cur = cur.return;
-        }
-      }
-      return JSON.stringify(sources.slice(0, 10));
-    })()
-  `]).catch(() => '[]');
-  const sources = JSON.parse(raw);
+  // Extract all Markdown links into sources array
+  const sources = Array.from(answer.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g))
+    .map(m => ({ title: m[1], url: m[2] }))
+    .filter((v, i, arr) => arr.findIndex(x => x.url === v.url) === i)
+    .slice(0, 10);
 
   return { answer: answer.trim(), sources };
 }
@@ -156,26 +154,26 @@ async function main() {
     await cdp(['nav', tab, 'https://www.perplexity.ai/'], 35000);
     await dismissConsent(tab, cdp);
 
-    // Wait for React app to mount #ask-input (up to 8s)
+    // Wait for React app to mount input (up to 8s)
     const deadline = Date.now() + 8000;
     while (Date.now() < deadline) {
-      const found = await cdp(['eval', tab, `!!document.querySelector('#ask-input')`]).catch(() => 'false');
+      const found = await cdp(['eval', tab, `!!document.querySelector('${S.input}')`]).catch(() => 'false');
       if (found === 'true') break;
       await new Promise(r => setTimeout(r, 400));
     }
     await new Promise(r => setTimeout(r, 300));
 
     await injectClipboardInterceptor(tab);
-    await cdp(['click', tab, '#ask-input']);
+    await cdp(['click', tab, S.input]);
     await new Promise(r => setTimeout(r, 400));
     await cdp(['type', tab, query]);
     await new Promise(r => setTimeout(r, 400));
     // Submit with Enter (most reliable across Chrome instances)
     await cdp(['eval', tab,
-      `document.querySelector('#ask-input')?.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,keyCode:13})), 'ok'`
+      `document.querySelector('${S.input}')?.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,keyCode:13})), 'ok'`
     ]);
 
-    await waitForCopyButton(tab);
+    await waitForGenerationToFinish(tab);
 
     const { answer, sources } = await extractAnswer(tab);
 
@@ -183,6 +181,11 @@ async function main() {
     const out = short ? answer.slice(0, 300).replace(/\s+\S*$/, '') + '…' : answer;
 
     const finalUrl = await cdp(['eval', tab, 'document.location.href']).catch(() => '');
+    
+    // Dump DOM to debug sources
+    const html = await cdp(['eval', tab, 'document.body.innerHTML']).catch(() => '');
+    (await import('fs')).writeFileSync('pplx-success-dom.html', html);
+    
     process.stdout.write(JSON.stringify({ query, url: finalUrl, answer: out, sources }, null, 2) + '\n');
   } catch (e) {
     process.stderr.write(`Error: ${e.message}\n`);

@@ -1,0 +1,19 @@
+{
+  "query": "who is the creator of rust",
+  "url": "https://www.perplexity.ai/search/who-is-the-creator-of-rust-cL9gIqVxRnujht4bx8xONw",
+  "answer": "**Graydon Hoare** created the Rust programming language. He began developing it in 2006 as a personal project while working at Mozilla, motivated by frustrations with memory safety issues in software, such as a crashed elevator system in his building. Mozilla sponsored the project starting in 2009,…",
+  "sources": [
+    {
+      "title": "en.wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Rust_(programming_language"
+    },
+    {
+      "title": "technologyreview",
+      "url": "https://www.technologyreview.com/2023/02/14/1067869/rust-worlds-fastest-growing-programming-language/"
+    },
+    {
+      "title": "en.wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Rust_(video_game"
+    }
+  ]
+}
