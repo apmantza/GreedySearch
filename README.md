@@ -14,8 +14,11 @@ Claude's training has a cutoff. For current library APIs, new framework releases
 - **Automatic triggering** — Claude invokes it without being asked when questions touch post-cutoff topics
 - **Auto-launch** — Chrome starts automatically if not running, no manual setup per session
 - **Gemini synthesis** — `--synthesize` deduplicates sources across all engines and feeds them to Gemini for a single grounded answer
+- **Deep research** — `--deep-research` fetches full article content from top sources before synthesis
 - **Source fetching** — `--fetch-top-source` pulls full article content from the best source URL
-- **Tab reuse** — existing engine tabs are reused across runs, no unnecessary tab churn
+- **Fresh isolated tabs** — each search gets a clean browser tab, preventing SPA navigation bugs and stale DOM state
+- **Regex-based citation extraction** — sources are parsed from clipboard Markdown (`[title](url)` links), not fragile DOM selectors
+- **Resilient verification handling** — auto-dismisses Cloudflare, Microsoft, and generic human-verification modals
 - **Zero dependencies** — no `npm install`, pure Node.js built-ins, `cdp.mjs` is bundled natively
 - **macOS / Linux / Windows** — detects Chrome path automatically per platform
 
@@ -25,6 +28,7 @@ Claude's training has a cutoff. For current library APIs, new framework releases
 - **Google Chrome** (standard install — detected automatically on all platforms)
 
 On non-standard Chrome installs, set `CHROME_PATH`:
+
 ```bash
 export CHROME_PATH="/path/to/chrome"
 ```
@@ -40,6 +44,7 @@ node setup.mjs
 Then **restart your Claude Code session** to pick up the skill and CLAUDE.md changes.
 
 Verify:
+
 ```bash
 node setup.mjs --check
 ```
@@ -118,7 +123,7 @@ After install, Claude invokes GreedySearch without being asked when:
 | Flag | Description |
 |------|-------------|
 | `--synthesize` | Deduplicate sources across engines, feed to Gemini for a single grounded answer |
-| `--deep-research` | Includes `--full` answers, fetches top source content, and runs `--synthesize` |
+| `--deep-research` | Fetches full article content from top sources, then runs `--synthesize` |
 | `--out <file>` | Write JSON to file instead of stdout — keeps context clean |
 | `--fetch-top-source` | Fetch content of article body from the best source URL |
 
@@ -147,31 +152,34 @@ With `--synthesize`, two additional fields are added:
   "bing": { "answer": "...", "sources": [] },
   "google": { "answer": "...", "sources": [...] },
   "_sources": [
-    { "url": "...", "title": "...", "score": 3 }
+    { "url": "...", "title": "...", "engineCount": 2, "sourceType": "official-docs" }
   ],
   "_synthesis": {
-    "answer": "Gemini's single grounded answer synthesized from deduplicated sources..."
+    "answer": "Gemini's single grounded answer...",
+    "agreement": { "level": "high", "summary": "..." },
+    "claims": [{ "claim": "...", "support": "strong", "sourceIds": ["S1"] }],
+    "recommendedSources": ["S1", "S2"]
   }
 }
 ```
 
-`_sources` is ranked by consensus (how many engines cited the same URL). `_synthesis.answer` is Gemini's grounded response.
+`_sources` is ranked by consensus (how many engines cited the same URL) then by source type (official-docs > repo > maintainer-blog > website > community). `_synthesis` includes agreement level, source-linked claims, and recommended reads.
 
 ## How it works
 
 1. `search.mjs` checks if Chrome is running — launches it automatically if not
-2. `launch.mjs` starts a dedicated Chrome on port 9223 with `--disable-features=DevToolsPrivacyUI` — no "Allow remote debugging?" dialogs, isolated profile that never touches your main Chrome session
-3. Existing engine tabs are reused from cache; new tabs opened only when needed
-4. Extractors run in parallel: each navigates to its engine, submits the query, polls for stream completion, returns clean JSON; when `--synthesize` is set, sources are deduplicated by consensus and sent to Gemini for a final synthesis round-trip
-5. Consent/cookie banners are dismissed automatically
-6. Chrome is controlled via the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) through the bundled `cdp.mjs` script
+2. `launch.mjs` starts a dedicated Chrome on port 9222 with an isolated profile — no "Allow remote debugging?" dialogs, never touches your main Chrome session
+3. A **fresh browser tab** is created for each engine on every search, preventing SPA navigation failures and stale DOM state from prior queries
+4. Extractors run in parallel: each navigates to its engine, submits the query, polls for stream completion, then copies the answer via a clipboard interceptor; **sources are extracted by regex-parsing Markdown links** (`[title](url)`) from the clipboard text rather than fragile DOM selectors
+5. Consent/verification banners (cookie notices, Cloudflare Turnstile, Microsoft "Verify you're human") are detected and dismissed automatically; tabs are closed when done
+6. When `--synthesize` is set, sources are deduplicated by consensus across engines and sent to Gemini for a final grounded synthesis
+7. Chrome is controlled via the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) through the bundled `cdp.mjs` script
 
 ## File structure
 
-```
+```text
 setup.mjs          ← installer — run once
 SKILL.md           ← Claude Code skill definition
-features.md        ← feature backlog
 search.mjs         ← unified CLI: search.mjs <engine> [flags] "<query>"
 launch.mjs         ← Chrome launcher / manager (cross-platform)
 extractors/
@@ -179,7 +187,8 @@ extractors/
   bing-copilot.mjs ← Bing Copilot extractor
   google-ai.mjs    ← Google AI Mode extractor
   gemini.mjs       ← Gemini extractor / synthesizer
-  consent.mjs      ← shared cookie/consent banner dismissal
+  consent.mjs      ← shared cookie/consent/verification dismissal
+  selectors.mjs    ← CSS selector registry (one place to update on UI changes)
 cdp.mjs            ← Chrome DevTools Protocol CLI for browser automation
 coding-task.mjs    ← multi-engine coding assistant
 ```
