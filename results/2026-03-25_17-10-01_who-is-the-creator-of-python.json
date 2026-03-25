@@ -1,0 +1,19 @@
+{
+  "query": "who is the creator of python",
+  "url": "https://www.perplexity.ai/search/who-is-the-creator-of-python-KKR3XmbSR9OVWJbAMf_biw",
+  "answer": "**Guido van Rossum** created the Python programming language. [pythoninstitute](https://pythoninstitute.org/about-python)\n\nHe began developing Python in December 1989 at the Centrum Wiskunde & Informatica (CWI) in the Netherlands as a successor to the ABC language, with its first release in…",
+  "sources": [
+    {
+      "title": "pythoninstitute",
+      "url": "https://pythoninstitute.org/about-python"
+    },
+    {
+      "title": "geeksforgeeks",
+      "url": "https://www.geeksforgeeks.org/python/history-of-python/"
+    },
+    {
+      "title": "en.wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Guido_van_Rossum"
+    }
+  ]
+}

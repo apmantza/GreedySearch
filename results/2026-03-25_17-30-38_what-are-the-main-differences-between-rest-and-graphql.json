@@ -1,0 +1,368 @@
+{
+  "perplexity": {
+    "engine": "perplexity",
+    "query": "what are the main differences between REST and GraphQL",
+    "url": "https://www.perplexity.ai/search/what-are-the-main-differences-hE3d7JnCT6qTNhaHtJLs.g",
+    "answer": "REST and GraphQL are two popular API design approaches, but they differ significantly in architecture, data fetching, and flexibility. REST relies on multiple endpoints and HTTP methods, while GraphQL uses a single endpoint with client-defined queries.…",
+    "sources": [
+      {
+        "title": "strapi",
+        "url": "https://strapi.io/blog/graphql-vs-rest"
+      },
+      {
+        "title": "geeksforgeeks",
+        "url": "https://www.geeksforgeeks.org/graphql/graphql-vs-rest-which-is-better-for-apis/"
+      },
+      {
+        "title": "api7",
+        "url": "https://api7.ai/pt/learning-center/api-101/graphql-vs-rest"
+      },
+      {
+        "title": "aws.amazon",
+        "url": "https://aws.amazon.com/compare/the-difference-between-graphql-and-rest/"
+      },
+      {
+        "title": "blog.logrocket",
+        "url": "https://blog.logrocket.com/graphql-vs-rest-apis/"
+      }
+    ]
+  },
+  "bing": {
+    "engine": "bing",
+    "query": "what are the main differences between REST and GraphQL",
+    "url": "https://copilot.microsoft.com/chats/fcF2ByiAwhC7CABZ3LeSn",
+    "answer": "**REST and GraphQL differ mainly in how clients request data and how servers deliver it: REST uses multiple fixed endpoints with predefined responses, while GraphQL uses a single endpoint where clients specify exactly what they…",
+    "sources": []
+  },
+  "google": {
+    "engine": "google",
+    "query": "what are the main differences between REST and GraphQL",
+    "url": "https://www.google.com/search?q=what+are+the+main+differences+between+REST+and+GraphQL&udm=50&mstk=AUtExfAYbgi_FaGayu3jrFgPKxrPnePPHvkXKsVzBaxsntjh1ldNHsYEtU9T1HeuIzRAV4XEGL6tbDrrJtR-TR5vYCKk1yeoXyZYgGtAuEkEfe_eI1j_nz3b51RV3OEi8OuIviVn3BFdc9GjGPnYoVMHHJYlAIqLpUGqS1s&csuir=1",
+    "answer": "The fundamental difference between REST and GraphQL is how they handle data requests: REST uses multiple fixed endpoints, whereas GraphQL uses a single endpoint and allows the client to define the exact data it needs. \nAmazon Web Services\n +1\nKey Technical Differences\nFeature \tREST…",
+    "sources": [
+      {
+        "url": "https://aws.amazon.com/compare/the-difference-between-graphql-and-rest/",
+        "title": ""
+      },
+      {
+        "url": "https://www.ibm.com/think/topics/graphql-vs-rest-api",
+        "title": ""
+      },
+      {
+        "url": "https://blog.postman.com/graphql-vs-rest/",
+        "title": ""
+      },
+      {
+        "url": "https://konghq.com/blog/learning-center/graphql-vs-rest",
+        "title": ""
+      },
+      {
+        "url": "https://api7.ai/ja/learning-center/api-101/graphql-vs-rest",
+        "title": ""
+      },
+      {
+        "url": "https://medium.com/@dmosyan/graphql-vs-rest-api-similarities-differences-857f9fc637a8",
+        "title": ""
+      },
+      {
+        "url": "https://www.geeksforgeeks.org/graphql/graphql-vs-rest-which-is-better-for-apis/",
+        "title": ""
+      },
+      {
+        "url": "https://blog.logrocket.com/graphql-vs-rest-apis/",
+        "title": ""
+      },
+      {
+        "url": "https://x-team.com/magazine/rest-vs-graphql",
+        "title": ""
+      },
+      {
+        "url": "https://strapi.io/blog/graphql-vs-rest",
+        "title": ""
+      }
+    ]
+  },
+  "_sources": [
+    {
+      "id": "S1",
+      "canonicalUrl": "https://strapi.io/blog/graphql-vs-rest",
+      "displayUrl": "https://strapi.io/blog/graphql-vs-rest",
+      "domain": "strapi.io",
+      "title": "strapi.io",
+      "engines": [
+        "perplexity",
+        "google"
+      ],
+      "engineCount": 2,
+      "perEngine": {
+        "perplexity": {
+          "rank": 1,
+          "title": ""
+        },
+        "google": {
+          "rank": 10,
+          "title": ""
+        }
+      },
+      "sourceType": "maintainer-blog",
+      "isOfficial": false
+    },
+    {
+      "id": "S2",
+      "canonicalUrl": "https://blog.logrocket.com/graphql-vs-rest-apis",
+      "displayUrl": "https://blog.logrocket.com/graphql-vs-rest-apis/",
+      "domain": "blog.logrocket.com",
+      "title": "blog.logrocket.com",
+      "engines": [
+        "perplexity",
+        "google"
+      ],
+      "engineCount": 2,
+      "perEngine": {
+        "perplexity": {
+          "rank": 5,
+          "title": ""
+        },
+        "google": {
+          "rank": 8,
+          "title": ""
+        }
+      },
+      "sourceType": "maintainer-blog",
+      "isOfficial": false
+    },
+    {
+      "id": "S3",
+      "canonicalUrl": "https://aws.amazon.com/compare/the-difference-between-graphql-and-rest",
+      "displayUrl": "https://aws.amazon.com/compare/the-difference-between-graphql-and-rest/",
+      "domain": "aws.amazon.com",
+      "title": "aws.amazon.com",
+      "engines": [
+        "perplexity",
+        "google"
+      ],
+      "engineCount": 2,
+      "perEngine": {
+        "perplexity": {
+          "rank": 4,
+          "title": ""
+        },
+        "google": {
+          "rank": 1,
+          "title": ""
+        }
+      },
+      "sourceType": "website",
+      "isOfficial": false
+    },
+    {
+      "id": "S4",
+      "canonicalUrl": "https://www.geeksforgeeks.org/graphql/graphql-vs-rest-which-is-better-for-apis",
+      "displayUrl": "https://www.geeksforgeeks.org/graphql/graphql-vs-rest-which-is-better-for-apis/",
+      "domain": "geeksforgeeks.org",
+      "title": "geeksforgeeks.org",
+      "engines": [
+        "perplexity",
+        "google"
+      ],
+      "engineCount": 2,
+      "perEngine": {
+        "perplexity": {
+          "rank": 2,
+          "title": ""
+        },
+        "google": {
+          "rank": 7,
+          "title": ""
+        }
+      },
+      "sourceType": "website",
+      "isOfficial": false
+    },
+    {
+      "id": "S5",
+      "canonicalUrl": "https://blog.postman.com/graphql-vs-rest",
+      "displayUrl": "https://blog.postman.com/graphql-vs-rest/",
+      "domain": "blog.postman.com",
+      "title": "blog.postman.com",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 3,
+          "title": ""
+        }
+      },
+      "sourceType": "maintainer-blog",
+      "isOfficial": false
+    },
+    {
+      "id": "S6",
+      "canonicalUrl": "https://konghq.com/blog/learning-center/graphql-vs-rest",
+      "displayUrl": "https://konghq.com/blog/learning-center/graphql-vs-rest",
+      "domain": "konghq.com",
+      "title": "konghq.com",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 4,
+          "title": ""
+        }
+      },
+      "sourceType": "maintainer-blog",
+      "isOfficial": false
+    },
+    {
+      "id": "S7",
+      "canonicalUrl": "https://www.ibm.com/think/topics/graphql-vs-rest-api",
+      "displayUrl": "https://www.ibm.com/think/topics/graphql-vs-rest-api",
+      "domain": "ibm.com",
+      "title": "ibm.com",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 2,
+          "title": ""
+        }
+      },
+      "sourceType": "website",
+      "isOfficial": false
+    },
+    {
+      "id": "S8",
+      "canonicalUrl": "https://api7.ai/pt/learning-center/api-101/graphql-vs-rest",
+      "displayUrl": "https://api7.ai/pt/learning-center/api-101/graphql-vs-rest",
+      "domain": "api7.ai",
+      "title": "api7",
+      "engines": [
+        "perplexity"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "perplexity": {
+          "rank": 3,
+          "title": "api7"
+        }
+      },
+      "sourceType": "website",
+      "isOfficial": false
+    },
+    {
+      "id": "S9",
+      "canonicalUrl": "https://api7.ai/ja/learning-center/api-101/graphql-vs-rest",
+      "displayUrl": "https://api7.ai/ja/learning-center/api-101/graphql-vs-rest",
+      "domain": "api7.ai",
+      "title": "api7.ai",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 5,
+          "title": ""
+        }
+      },
+      "sourceType": "website",
+      "isOfficial": false
+    },
+    {
+      "id": "S10",
+      "canonicalUrl": "https://x-team.com/magazine/rest-vs-graphql",
+      "displayUrl": "https://x-team.com/magazine/rest-vs-graphql",
+      "domain": "x-team.com",
+      "title": "x-team.com",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 9,
+          "title": ""
+        }
+      },
+      "sourceType": "website",
+      "isOfficial": false
+    },
+    {
+      "id": "S11",
+      "canonicalUrl": "https://medium.com/@dmosyan/graphql-vs-rest-api-similarities-differences-857f9fc637a8",
+      "displayUrl": "https://medium.com/@dmosyan/graphql-vs-rest-api-similarities-differences-857f9fc637a8",
+      "domain": "medium.com",
+      "title": "medium.com",
+      "engines": [
+        "google"
+      ],
+      "engineCount": 1,
+      "perEngine": {
+        "google": {
+          "rank": 6,
+          "title": ""
+        }
+      },
+      "sourceType": "community",
+      "isOfficial": false
+    }
+  ],
+  "_synthesis": {
+    "answer": "The main difference lies in data fetching and endpoint architecture: REST uses multiple fixed endpoints where the server defines the response structure, while GraphQL uses a single endpoint that allows clients to request exactly the data they need, eliminating over-fetching and under-fetching.",
+    "agreement": {
+      "level": "high",
+      "summary": "All three engines agree on the fundamental architectural shift from multiple fixed endpoints (REST) to a single flexible endpoint (GraphQL) and the client's role in defining data requirements."
+    },
+    "differences": [
+      "REST responses are determined by the server and often include fixed data sets, whereas GraphQL responses are determined by the client's query.",
+      "REST typically requires multiple network requests to fetch related resources (under-fetching), while GraphQL can retrieve nested data in a single request."
+    ],
+    "caveats": [
+      "GraphQL introduces additional complexity in server-side implementation and caching compared to REST.",
+      "REST remains the industry standard for simple applications and benefits from native HTTP caching mechanisms."
+    ],
+    "claims": [
+      {
+        "claim": "REST utilizes multiple endpoints per resource, while GraphQL utilizes a single entry point.",
+        "support": "strong",
+        "sourceIds": [
+          "S1",
+          "S3",
+          "S7"
+        ]
+      },
+      {
+        "claim": "GraphQL solves the problem of over-fetching and under-fetching data.",
+        "support": "strong",
+        "sourceIds": [
+          "S2",
+          "S4",
+          "S5"
+        ]
+      },
+      {
+        "claim": "REST follows a predictable structure based on HTTP methods (GET, POST, PUT, DELETE).",
+        "support": "strong",
+        "sourceIds": [
+          "S3",
+          "S6",
+          "S8"
+        ]
+      }
+    ],
+    "recommendedSources": [
+      "S3",
+      "S5",
+      "S7"
+    ],
+    "rawAnswer": "{\n  \"answer\": \"The main difference lies in data fetching and endpoint architecture: REST uses multiple fixed endpoints where the server defines the response structure, while GraphQL uses a single endpoint that allows clients to request exactly the data they need, eliminating over-fetching and under-fetching.\",\n  \"agreement\": {\n    \"level\": \"high\",\n    \"summary\": \"All three engines agree on the fundamental architectural shift from multiple fixed endpoints (REST) to a single flexible endpoint (GraphQL) and the client's role in defining data requirements.\"\n  },\n  \"differences\": [\n    \"REST responses are determined by the server and often include fixed data sets, whereas GraphQL responses are determined by the client's query.\",\n    \"REST typically requires multiple network requests to fetch related resources (under-fetching), while GraphQL can retrieve nested data in a single request.\"\n  ],\n  \"caveats\": [\n    \"GraphQL introduces additional complexity in server-side implementation and caching compared to REST.\",\n    \"REST remains the industry standard for simple applications and benefits from native HTTP caching mechanisms.\"\n  ],\n  \"claims\": [\n    {\n      \"claim\": \"REST utilizes multiple endpoints per resource, while GraphQL utilizes a single entry point.\",\n      \"support\": \"strong\",\n      \"sourceIds\": [\"S1\", \"S3\", \"S7\"]\n    },\n    {\n      \"claim\": \"GraphQL solves the problem of over-fetching and under-fetching data.\",\n      \"support\": \"strong\",\n      \"sourceIds\": [\"S2\", \"S4\", \"S5\"]\n    },\n    {\n      \"claim\": \"REST follows a predictable structure based on HTTP methods (GET, POST, PUT, DELETE).\",\n      \"support\": \"strong\",\n      \"sourceIds\": [\"S3\", \"S6\", \"S8\"]\n    }\n  ],\n  \"recommendedSources\": [\"S3\", \"S5\", \"S7\"]\n}",
+    "geminiSources": [],
+    "synthesized": true
+  }
+}

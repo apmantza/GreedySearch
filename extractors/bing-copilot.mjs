@@ -10,15 +10,20 @@
 
 import { readFileSync, existsSync } from 'fs';
 import { spawn } from 'child_process';
-import { tmpdir, homedir } from 'os';
-import { join } from 'path';
+import { tmpdir } from 'os';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { dismissConsent, handleVerification } from './consent.mjs';
+import { SELECTORS } from './selectors.mjs';
 
-const CDP = join(homedir(), '.claude', 'skills', 'chrome-cdp', 'scripts', 'cdp.mjs');
+const __dir = dirname(fileURLToPath(import.meta.url));
+const CDP = join(__dir, '..', 'cdp.mjs');
 const PAGES_CACHE = `${tmpdir().replace(/\\/g, '/')}/cdp-pages.json`;
 
 const COPY_POLL_INTERVAL = 700;
 const COPY_TIMEOUT = 60000;
+
+const S = SELECTORS.bing;
 
 // ---------------------------------------------------------------------------
 
@@ -41,16 +46,15 @@ function cdp(args, timeoutMs = 30000) {
 async function getOrOpenTab(tabPrefix) {
   if (tabPrefix) return tabPrefix;
 
-  if (existsSync(PAGES_CACHE)) {
-    const pages = JSON.parse(readFileSync(PAGES_CACHE, 'utf8'));
-    const existing = pages.find(p => p.url.includes('copilot.microsoft.com'));
-    if (existing) return existing.targetId.slice(0, 8);
-  }
-
   const list = await cdp(['list']);
-  const firstLine = list.split('\n')[0];
-  if (!firstLine) throw new Error('No Chrome tabs found. Is Chrome running with --remote-debugging-port=9222?');
-  return firstLine.slice(0, 8);
+  const first = list.split('\n')[0];
+  const anchor = first ? first.slice(0, 8) : null;
+  if (!anchor) throw new Error('No Chrome tabs found. Is Chrome running with --remote-debugging-port=9222?');
+
+  const raw = await cdp(['evalraw', anchor, 'Target.createTarget', '{"url":"about:blank"}']);
+  const { targetId } = JSON.parse(raw);
+  await cdp(['list']);
+  return targetId.slice(0, 8);
 }
 
 async function injectClipboardInterceptor(tab) {
@@ -82,7 +86,7 @@ async function waitForCopyButton(tab) {
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, COPY_POLL_INTERVAL));
     const found = await cdp(['eval', tab,
-      `!!document.querySelector('button[data-testid="copy-ai-message-button"]')`
+      `!!document.querySelector('${S.copyButton}')`
     ]).catch(() => 'false');
     if (found === 'true') return;
   }
@@ -90,14 +94,18 @@ async function waitForCopyButton(tab) {
 }
 
 async function extractAnswer(tab) {
-  await cdp(['eval', tab, `document.querySelector('button[data-testid="copy-ai-message-button"]')?.click()`]);
+  await cdp(['eval', tab, `document.querySelector('${S.copyButton}')?.click()`]);
   await new Promise(r => setTimeout(r, 400));
 
   const answer = await cdp(['eval', tab, `window.__bingClipboard || ''`]);
   if (!answer) throw new Error('Clipboard interceptor returned empty text');
 
-  // Bing sources lazy-load well after the answer stream — not reliably capturable.
-  const sources = [];
+  // Extract all Markdown links into sources array
+  const sources = Array.from(answer.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g))
+    .map(m => ({ title: m[1], url: m[2] }))
+    .filter(s => s.url && !s.url.includes(S.sourceExclude))
+    .filter((v, i, arr) => arr.findIndex(x => x.url === v.url) === i)
+    .slice(0, 10);
 
   return { answer: answer.trim(), sources };
 }
@@ -125,29 +133,52 @@ async function main() {
 
     // Navigate to Copilot homepage and use the chat input
     await cdp(['nav', tab, 'https://copilot.microsoft.com/'], 35000);
-    await new Promise(r => setTimeout(r, 1500));
+    await new Promise(r => setTimeout(r, 2000));
     await dismissConsent(tab, cdp);
-    await handleVerification(tab, cdp, 60000);
+    
+    // Handle verification challenges (Cloudflare Turnstile, Microsoft auth, etc.)
+    const verifyResult = await handleVerification(tab, cdp, 90000);
+    if (verifyResult === 'needs-human') {
+      throw new Error('Copilot verification required — please solve it manually in the browser window');
+    }
+    
+    // After verification, page may have redirected or reloaded — wait for it to settle
+    if (verifyResult === 'clicked') {
+      await new Promise(r => setTimeout(r, 3000));
+      
+      // Re-navigate if we got redirected
+      const currentUrl = await cdp(['eval', tab, 'document.location.href']).catch(() => '');
+      if (!currentUrl.includes('copilot.microsoft.com')) {
+        await cdp(['nav', tab, 'https://copilot.microsoft.com/'], 35000);
+        await new Promise(r => setTimeout(r, 2000));
+        await dismissConsent(tab, cdp);
+      }
+    }
 
-    // Wait for React app to mount #userInput (up to 8s)
-    const deadline = Date.now() + 8000;
-    while (Date.now() < deadline) {
-      const found = await cdp(['eval', tab, `!!document.querySelector('#userInput')`]).catch(() => 'false');
+    // Wait for React app to mount input (up to 15s, longer after verification)
+    const inputDeadline = Date.now() + 15000;
+    while (Date.now() < inputDeadline) {
+      const found = await cdp(['eval', tab, `!!document.querySelector('${S.input}')`]).catch(() => 'false');
       if (found === 'true') break;
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 500));
     }
     await new Promise(r => setTimeout(r, 300));
 
+    // Verify input is actually there before proceeding
+    const inputReady = await cdp(['eval', tab, `!!document.querySelector('${S.input}')`]).catch(() => 'false');
+    if (inputReady !== 'true') {
+      throw new Error('Copilot input not found — verification may have failed or page is in unexpected state');
+    }
+
     await injectClipboardInterceptor(tab);
-    // Find input and type query
-    await cdp(['click', tab, '#userInput']);
+    await cdp(['click', tab, S.input]);
     await new Promise(r => setTimeout(r, 400));
     await cdp(['type', tab, query]);
     await new Promise(r => setTimeout(r, 400));
 
     // Submit with Enter (most reliable across locales and Chrome instances)
     await cdp(['eval', tab,
-      `document.querySelector('#userInput')?.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,keyCode:13})), 'ok'`
+      `document.querySelector('${S.input}')?.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,keyCode:13})), 'ok'`
     ]);
 
     await waitForCopyButton(tab);

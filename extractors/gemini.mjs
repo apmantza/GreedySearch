@@ -10,17 +10,20 @@
 
 import { readFileSync, existsSync } from 'fs';
 import { spawn } from 'child_process';
-import { tmpdir, homedir } from 'os';
+import { tmpdir } from 'os';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { dismissConsent, handleVerification } from './consent.mjs';
+import { SELECTORS } from './selectors.mjs';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
-const CDP = join(homedir(), '.claude', 'skills', 'chrome-cdp', 'scripts', 'cdp.mjs');
+const CDP = join(__dir, '..', 'cdp.mjs');
 const PAGES_CACHE = `${tmpdir().replace(/\\/g, '/')}/cdp-pages.json`;
 
 const COPY_POLL_INTERVAL = 600;
-const COPY_TIMEOUT = 120000;    // wait up to 2 min for copy button to appear
+const COPY_TIMEOUT = 120000;
+
+const S = SELECTORS.gemini;
 
 // ---------------------------------------------------------------------------
 
@@ -41,19 +44,21 @@ function cdp(args, timeoutMs = 30000) {
 
 async function getOrOpenTab(tabPrefix) {
   if (tabPrefix) return tabPrefix;
-  if (existsSync(PAGES_CACHE)) {
-    const pages = JSON.parse(readFileSync(PAGES_CACHE, 'utf8'));
-    const existing = pages.find(p => p.url.includes('gemini.google.com'));
-    if (existing) return existing.targetId.slice(0, 8);
-  }
   const list = await cdp(['list']);
-  return list.split('\n')[0].slice(0, 8);
+  const first = list.split('\n')[0];
+  const anchor = first ? first.slice(0, 8) : null;
+  if (!anchor) throw new Error('No Chrome tabs found. Is Chrome running with --remote-debugging-port=9222?');
+
+  const raw = await cdp(['evalraw', anchor, 'Target.createTarget', '{"url":"about:blank"}']);
+  const { targetId } = JSON.parse(raw);
+  await cdp(['list']);
+  return targetId.slice(0, 8);
 }
 
 async function typeIntoGemini(tab, text) {
   await cdp(['eval', tab, `
     (function(t) {
-      var el = document.querySelector('rich-textarea .ql-editor');
+      var el = document.querySelector('${S.input}');
       if (!el) return false;
       el.focus();
       document.execCommand('insertText', false, t);
@@ -93,7 +98,7 @@ async function waitForCopyButton(tab) {
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, COPY_POLL_INTERVAL));
     const found = await cdp(['eval', tab,
-      `!!document.querySelector('button[aria-label="Copy"]')`
+      `!!document.querySelector('${S.copyButton}')`
     ]).catch(() => 'false');
     if (found === 'true') return;
   }
@@ -102,37 +107,21 @@ async function waitForCopyButton(tab) {
 
 async function extractAnswer(tab) {
   // Click copy button → our interceptor captures the text.
-  await cdp(['eval', tab, `document.querySelector('button[aria-label="Copy"]')?.click()`]);
+  await cdp(['eval', tab, `document.querySelector('${S.copyButton}')?.click()`]);
   await new Promise(r => setTimeout(r, 400));
 
   const answer = await cdp(['eval', tab, `window.__geminiClipboard || ''`]);
   if (!answer) throw new Error('Clipboard interceptor returned empty text');
 
-  // Sources: click the first citation button to open the side panel, then extract URLs.
-  const hasCitations = await cdp(['eval', tab,
-    `!!document.querySelector('button[aria-label*="citation"]')`
-  ]).catch(() => 'false');
+  // Extract all Markdown links into sources array
+  const exclusions = S.sourcesExclude;
+  const sources = Array.from(answer.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g))
+    .map(m => ({ title: m[1], url: m[2] }))
+    .filter(s => s.url && !exclusions.some(e => s.url.includes(e)))
+    .filter((v, i, arr) => arr.findIndex(x => x.url === v.url) === i)
+    .slice(0, 10);
 
-  if (hasCitations === 'true') {
-    await cdp(['eval', tab, `document.querySelector('button[aria-label*="citation"]')?.click()`]);
-    await new Promise(r => setTimeout(r, 1500));
-  }
-
-  const raw = await cdp(['eval', tab, `
-    (function() {
-      var sources = Array.from(document.querySelectorAll('a[href^="http"]'))
-        .map(a => ({ url: a.href.split('#')[0], title: a.innerText?.trim().split('\\n')[0] || '' }))
-        .filter(s => s.url && !s.url.includes('google.') && !s.url.includes('gemini.google') && !s.url.includes('gstatic') && !s.url.includes('googleapis'))
-        .filter((v, i, arr) => arr.findIndex(x => x.url === v.url) === i)
-        .slice(0, 8);
-      return JSON.stringify(sources);
-    })()
-  `]).catch(() => '[]');
-  const sources = JSON.parse(raw);
-
-  // Strip Gemini promotional footer text that sometimes appears at the end.
-  const clean = answer.trim().replace(/\n+By the way,.*$/s, '').replace(/\n+To unlock.*$/s, '').trim();
-  return { answer: clean, sources };
+  return { answer: answer.trim(), sources };
 }
 
 // ---------------------------------------------------------------------------
@@ -165,7 +154,7 @@ async function main() {
     // Wait for input to be ready
     const deadline = Date.now() + 10000;
     while (Date.now() < deadline) {
-      const ready = await cdp(['eval', tab, `!!document.querySelector('rich-textarea .ql-editor')`]).catch(() => 'false');
+      const ready = await cdp(['eval', tab, `!!document.querySelector('${S.input}')`]).catch(() => 'false');
       if (ready === 'true') break;
       await new Promise(r => setTimeout(r, 400));
     }
@@ -175,7 +164,7 @@ async function main() {
     await typeIntoGemini(tab, query);
     await new Promise(r => setTimeout(r, 400));
 
-    await cdp(['eval', tab, `document.querySelector('button[aria-label*="Send"]')?.click()`]);
+    await cdp(['eval', tab, `document.querySelector('${S.sendButton}')?.click()`]);
 
     await waitForCopyButton(tab);
 

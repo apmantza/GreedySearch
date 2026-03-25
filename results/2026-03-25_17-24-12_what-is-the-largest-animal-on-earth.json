@@ -1,0 +1,19 @@
+{
+  "query": "what is the largest animal on earth",
+  "url": "https://www.perplexity.ai/search/what-is-the-largest-animal-on-grHd2v.FSHWZb.CItumSKA",
+  "answer": "The largest animal on Earth is the **blue whale** (*Balaenoptera musculus*). It is also the largest animal known to have ever existed. [britannica](https://www.britannica.com/science/What-Is-the-Largest-Animal-on-Earth)\n### How big is a blue whale?\n- Adults can reach around **30 meters (about 98…",
+  "sources": [
+    {
+      "title": "britannica",
+      "url": "https://www.britannica.com/science/What-Is-the-Largest-Animal-on-Earth"
+    },
+    {
+      "title": "kids.guinnessworldrecords",
+      "url": "https://kids.guinnessworldrecords.com/news/2025/10/super-sized-species-meet-the-worlds-biggest-animals"
+    },
+    {
+      "title": "en.wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Blue_whale"
+    }
+  ]
+}

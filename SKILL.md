@@ -15,6 +15,8 @@ description: >
 Runs Perplexity, Bing Copilot, and Google AI in parallel. Gemini is reserved as a
 synthesizer — it receives deduplicated sources ranked by consensus and returns a
 single grounded answer. Returns clean JSON with `answer` + `sources` per engine.
+Features deep research capabilities that fetch and parse top source URLs before synthesis.
+Also includes `coding-task.mjs` for delegating tasks to Gemini and Copilot.
 
 ## Prerequisites
 
@@ -40,8 +42,16 @@ node ~/.claude/skills/greedysearch/search.mjs all "<query>"
 # With Gemini synthesis — deduplicates sources, returns single grounded answer
 node ~/.claude/skills/greedysearch/search.mjs all --synthesize "<query>"
 
+# Deep Research — Fetches content from top sources before synthesis for highly grounded answers
+node ~/.claude/skills/greedysearch/search.mjs all --deep-research "<query>"
+
 # Write to file (keeps JSON off context window)
 node ~/.claude/skills/greedysearch/search.mjs all --synthesize --out /tmp/gs.json "<query>"
+
+# Coding Tasks - Get a second opinion, review, or debug help from Gemini/Copilot
+# Modes: code, review, plan, test, debug
+node ~/.claude/skills/greedysearch/coding-task.mjs "Refactor this function" --engine all --mode review
+node ~/.claude/skills/greedysearch/coding-task.mjs "Find the root cause of this error" --engine gemini --mode debug
 
 # Single engine
 node ~/.claude/skills/greedysearch/search.mjs p "<query>"    # Perplexity
@@ -52,7 +62,7 @@ node ~/.claude/skills/greedysearch/search.mjs gem "<query>"  # Gemini standalone
 
 **Output (standard):** `{ perplexity: { answer, sources }, bing: { answer, sources }, google: { answer, sources } }`
 
-**Output (--synthesize):** adds `_sources` (deduped, ranked by engine consensus) and `_synthesis: { answer, sources }` (Gemini's grounded answer)
+**Output (--synthesize / --deep-research):** adds `_sources` (deduped, ranked by engine consensus) and `_synthesis: { answer, sources }` (Gemini's grounded answer). Deep research also adds source fetching metadata.
 
 ## Engine routing
 
@@ -67,9 +77,10 @@ node ~/.claude/skills/greedysearch/search.mjs gem "<query>"  # Gemini standalone
 | Security / CVEs | `p` | Finds actual advisories |
 | Deep technical explanation | `gem` | Gemini standalone, well-structured breakdowns |
 | Dependency / tool selection | `all --synthesize` | Consensus sources + Gemini synthesis |
-| Architecture validation | `all --synthesize` | Multiple perspectives, single grounded answer |
+| Architecture validation | `all --deep-research` | Fetched sources + single grounded answer |
 | Quick lookup | `all` | 3 parallel answers, no synthesis overhead |
 | Anything uncertain | `all --synthesize` | Where sources agree = high confidence |
+| Debugging / Code Review | `coding-task.mjs` | Delegates to Gemini/Copilot for second opinion |
 
 ## Trigger conditions
 

@@ -10,14 +10,14 @@
 // Errors go to stderr only.
 
 import { spawn } from 'child_process';
-import { homedir, tmpdir } from 'os';
+import { tmpdir } from 'os';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { readFileSync, existsSync, writeFileSync } from 'fs';
 import { dismissConsent, handleVerification } from './extractors/consent.mjs';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
-const CDP = join(homedir(), '.claude', 'skills', 'chrome-cdp', 'scripts', 'cdp.mjs');
+const CDP = join(__dir, 'cdp.mjs');
 const PAGES_CACHE = `${tmpdir().replace(/\\/g, '/')}/cdp-pages.json`;
 
 // Mode system prompts — prepended to the user's task
@@ -28,8 +28,6 @@ const MODE_PROMPTS = {
   test: `You are a senior engineer writing tests for code written by someone else. Your goal is to find what they missed. Write a comprehensive test suite that covers: edge cases the author likely didn't think of, boundary conditions (empty input, nulls, max values, type coercion), error paths and exception handling, concurrency or ordering issues if relevant, and any behaviour that differs from what the function name implies. Use the same language and testing framework as the code if apparent, otherwise default to the most common one for that language. Output runnable test code — not a list of what to test.`,
   debug: `You are a senior engineer debugging someone else's code. You have fresh eyes — no prior assumptions about what should work. Given the bug description and relevant code: (1) identify the most likely root cause, being specific about the exact line or condition, (2) explain why it manifests the way it does, (3) suggest the minimal fix, (4) flag any other latent bugs you notice while reading. Do not guess vaguely — reason from the code. If you need information that isn't provided, say exactly what you'd add to narrow it down.`,
 };
-
-const MAX_CONTEXT_CHARS = 6000;   // Copilot textarea limit ~10240 minus preamble/task overhead
 
 const STREAM_POLL_INTERVAL = 800;
 const STREAM_STABLE_ROUNDS = 4;
@@ -98,7 +96,6 @@ const ENGINES = {
 
     async waitStream(tab) {
       const deadline = Date.now() + STREAM_TIMEOUT;
-      const MIN_LEN = 10;  // lower threshold — message-content uses aria-busy which hides innerText
       let started = false, stableCount = 0, lastLen = -1;
 
       while (Date.now() < deadline) {
@@ -111,13 +108,13 @@ const ENGINES = {
           `(function(){var els=document.querySelectorAll('model-response p,model-response li,model-response h1,model-response h2,model-response h3');return Array.from(els).reduce(function(a,e){return a+(e.innerText?.length||0)},0)+''})()`,
         ]).catch(() => '0');
         const len = parseInt(lenStr) || 0;
-        if (len >= MIN_LEN) started = true;
+        if (len >= 10) started = true;
         if (!started) continue;
-        if (len >= MIN_LEN && len === lastLen && stopVisible === 'false') {
+        if (len >= 10 && len === lastLen && stopVisible === 'false') {
           if (++stableCount >= STREAM_STABLE_ROUNDS) return;
         } else { stableCount = 0; lastLen = len; }
       }
-      if (lastLen >= MIN_LEN) return;
+      if (lastLen >= 10) return;
       throw new Error('Gemini response did not stabilise');
     },
 
@@ -194,42 +191,6 @@ const ENGINES = {
 
 // ---------------------------------------------------------------------------
 
-async function summarizeWithHaiku(result, mode) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    process.stderr.write('[summarize] ANTHROPIC_API_KEY not set — skipping summary\n');
-    return null;
-  }
-  const prompt = `You are summarizing AI assistant responses to a ${mode} task. Extract only what matters.
-Return 4-6 bullet points covering: the most critical findings, concrete recommendations, and anything flagged by multiple engines. Skip preamble. Be terse.
-
-Results:
-${JSON.stringify(result, null, 2).slice(0, 8000)}`;
-
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 400,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-    const data = await res.json();
-    return data.content?.[0]?.text || null;
-  } catch (e) {
-    process.stderr.write(`[summarize] Haiku call failed: ${e.message}\n`);
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-
 function extractCodeBlocks(text) {
   const blocks = [];
   const regex = /```(\w+)?\n([\s\S]*?)```/g;
@@ -265,11 +226,7 @@ async function runEngine(engineName, task, context, mode, tabPrefix) {
       const existing = pages.find(p => p.url.includes(engine.domain));
       if (existing) tab = existing.targetId.slice(0, 8);
     }
-    if (!tab) {
-      tab = await openNewTab();
-      await new Promise(r => setTimeout(r, 800));  // let tab initialize
-      await cdp(['list']);  // refresh cache so new tab is resolvable on Windows
-    }
+    if (!tab) tab = await openNewTab();
   }
 
   // Navigate to fresh conversation — fall back to new tab if cached tab is stale
@@ -278,8 +235,6 @@ async function runEngine(engineName, task, context, mode, tabPrefix) {
   } catch (e) {
     if (e.message.includes('No target matching')) {
       tab = await openNewTab();
-      await new Promise(r => setTimeout(r, 800));
-      await cdp(['list']);  // refresh cache so new tab is resolvable on Windows
       await cdp(['nav', tab, engine.url], 35000);
     } else throw e;
   }
@@ -291,13 +246,8 @@ async function runEngine(engineName, task, context, mode, tabPrefix) {
 
   // Build the prompt
   const preamble = MODE_PROMPTS[mode] || null;
-  let ctx = context;
-  if (ctx && ctx.length > MAX_CONTEXT_CHARS) {
-    process.stderr.write(`[coding-task] Context truncated from ${ctx.length} to ${MAX_CONTEXT_CHARS} chars\n`);
-    ctx = ctx.slice(0, MAX_CONTEXT_CHARS) + '\n\n[... truncated ...]';
-  }
-  const body = ctx
-    ? `${task}\n\nHere is the relevant code/context:\n\`\`\`\n${ctx}\n\`\`\``
+  const body = context
+    ? `${task}\n\nHere is the relevant code/context:\n\`\`\`\n${context}\n\`\`\``
     : task;
   const prompt = preamble ? `${preamble}\n\n---\n\n${body}` : body;
 
@@ -350,7 +300,6 @@ async function main() {
   const tabPrefix = tabFlagIdx !== -1 ? args[tabFlagIdx + 1] : null;
   const modeFlagIdx = args.indexOf('--mode');
   const mode = modeFlagIdx !== -1 ? args[modeFlagIdx + 1] : 'code';
-  const summarize = args.includes('--summarize');
 
   if (!MODE_PROMPTS.hasOwnProperty(mode)) {
     process.stderr.write(`Error: unknown mode "${mode}". Use: code, review, plan, test, debug\n`);
@@ -378,7 +327,6 @@ async function main() {
     ...(tabFlagIdx     >= 0 ? [tabFlagIdx,     tabFlagIdx     + 1] : []),
     ...(modeFlagIdx    >= 0 ? [modeFlagIdx,    modeFlagIdx    + 1] : []),
     ...fileIndices,
-    ...args.reduce((acc, a, i) => a === '--summarize' ? [...acc, i] : acc, []),
   ]);
   const task = args.filter((_, i) => !skipFlags.has(i)).join(' ');
 
@@ -415,13 +363,6 @@ async function main() {
     process.stderr.write(`Results written to ${outFile}\n`);
   } else {
     process.stdout.write(json);
-  }
-
-  if (summarize) {
-    const summary = await summarizeWithHaiku(result, mode);
-    if (summary) {
-      process.stdout.write('\n--- Haiku summary ---\n' + summary + '\n');
-    }
   }
 }
 

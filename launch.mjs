@@ -3,11 +3,10 @@
 //
 // This Chrome instance uses --disable-features=DevToolsPrivacyUI which suppresses
 // the "Allow remote debugging?" dialog entirely. It runs on port 9222 so it doesn't
-// conflict with your main Chrome session.
+// conflict with your main Chrome session (which may use port 9223).
 //
-// On launch, it overwrites the DevToolsActivePort file that cdp.mjs reads so all
-// extractors automatically target the GreedySearch Chrome, with no code changes.
-// The original file is restored on --kill.
+// search.mjs passes CDP_PROFILE_DIR so cdp.mjs targets this dedicated Chrome
+// without ever touching the user's main Chrome DevToolsActivePort file.
 //
 // Usage:
 //   node launch.mjs          — launch (or report if already running)
@@ -15,8 +14,8 @@
 //   node launch.mjs --status — check if running
 
 import { spawn } from 'child_process';
-import { existsSync, writeFileSync, readFileSync, copyFileSync, mkdirSync, unlinkSync } from 'fs';
-import { tmpdir, homedir, platform } from 'os';
+import { existsSync, writeFileSync, readFileSync, mkdirSync, unlinkSync } from 'fs';
+import { tmpdir, platform } from 'os';
 import { join } from 'path';
 import http from 'http';
 
@@ -42,16 +41,6 @@ function findChrome() {
   ];
   return candidates.find(existsSync) || null;
 }
-
-function systemPortPath() {
-  const os = platform();
-  if (os === 'win32') return join(homedir(), 'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'DevToolsActivePort');
-  if (os === 'darwin') return join(homedir(), 'Library', 'Application Support', 'Google', 'Chrome', 'DevToolsActivePort');
-  return join(homedir(), '.config', 'google-chrome', 'DevToolsActivePort');
-}
-
-const SYSTEM_PORT   = systemPortPath();
-const SYSTEM_BACKUP = SYSTEM_PORT + '.bak';
 
 const CHROME_FLAGS = [
   `--remote-debugging-port=${PORT}`,
@@ -95,7 +84,7 @@ async function writePortFile(timeoutMs = 15000) {
     if (ok) {
       try {
         const { webSocketDebuggerUrl } = JSON.parse(body);
-        // webSocketDebuggerUrl = "ws://localhost:9222/devtools/browser/..."
+        // webSocketDebuggerUrl = "ws://localhost:9223/devtools/browser/..."
         const wsPath = new URL(webSocketDebuggerUrl).pathname;
         // Write in DevToolsActivePort format: port on line 1, path on line 2
         const content = `${PORT}\n${wsPath}`;
@@ -106,60 +95,6 @@ async function writePortFile(timeoutMs = 15000) {
     await new Promise(r => setTimeout(r, 400));
   }
   return false;
-}
-
-function redirectCdpToGreedySearch() {
-  // Back up system DevToolsActivePort (user's main Chrome)
-  if (existsSync(SYSTEM_PORT) && !existsSync(SYSTEM_BACKUP)) {
-    copyFileSync(SYSTEM_PORT, SYSTEM_BACKUP);
-  }
-  // Point cdp.mjs to our dedicated Chrome's port
-  // On Windows, main Chrome may hold a lock on SYSTEM_PORT (EBUSY).
-  // Fall back to writeFileSync which uses CreateFile/WriteFile instead of CopyFile.
-  try {
-    copyFileSync(ACTIVE_PORT, SYSTEM_PORT);
-  } catch (e) {
-    if (e.code !== 'EBUSY') throw e;
-    try {
-      writeFileSync(SYSTEM_PORT, readFileSync(ACTIVE_PORT, 'utf8'), 'utf8');
-    } catch {
-      console.warn('Warning: could not redirect DevToolsActivePort (file busy) — cdp.mjs will use existing port.');
-    }
-  }
-}
-
-function restoreCdpToMainChrome() {
-  if (existsSync(SYSTEM_BACKUP)) {
-    copyFileSync(SYSTEM_BACKUP, SYSTEM_PORT);
-    console.log('Restored DevToolsActivePort to main Chrome.');
-  } else if (existsSync(SYSTEM_PORT)) {
-    // No backup means main Chrome wasn't using CDP — remove our file
-    try { unlinkSync(SYSTEM_PORT); } catch {}
-  }
-}
-
-// Pre-grant clipboard access for search engines that need it (Perplexity, Gemini).
-// Chrome reads these on startup; setting 1 = ALLOW, 0 = ASK (default).
-function seedClipboardPermissions() {
-  const prefsPath = join(PROFILE_DIR, 'Default', 'Preferences');
-  let prefs = {};
-  if (existsSync(prefsPath)) {
-    try { prefs = JSON.parse(readFileSync(prefsPath, 'utf8')); } catch {}
-  }
-  const ts = String(BigInt(Date.now()) * 10000n + 116444736000000000n); // Chrome FILETIME µs
-  prefs.profile ??= {};
-  prefs.profile.content_settings ??= {};
-  prefs.profile.content_settings.exceptions ??= {};
-  prefs.profile.content_settings.exceptions.clipboard ??= {};
-  const clip = prefs.profile.content_settings.exceptions.clipboard;
-  for (const origin of [
-    'https://www.perplexity.ai:443,*',
-    'https://gemini.google.com:443,*',
-    'https://copilot.microsoft.com:443,*',
-  ]) {
-    clip[origin] = { last_modified: ts, setting: 1 };
-  }
-  writeFileSync(prefsPath, JSON.stringify(prefs), 'utf8');
 }
 
 // ---------------------------------------------------------------------------
@@ -175,7 +110,6 @@ async function main() {
     } else {
       console.log('GreedySearch Chrome is not running.');
     }
-    restoreCdpToMainChrome();
     return;
   }
 
@@ -192,11 +126,10 @@ async function main() {
     const ready = await writePortFile(5000);
     if (ready) {
       console.log(`GreedySearch Chrome already running (pid ${existing}, port ${PORT}).`);
-      redirectCdpToGreedySearch();
-      console.log('DevToolsActivePort redirected.');
+      console.log('Dedicated GreedySearch DevToolsActivePort is ready.');
       return;
     }
-    // Stale PID — process alive but not Chrome on port 9222. Fall through to fresh launch.
+    // Stale PID — process alive but not Chrome on port 9223. Fall through to fresh launch.
     console.log(`Stale PID ${existing} detected (not Chrome on port ${PORT}) — launching fresh.`);
     try { unlinkSync(PID_FILE); } catch {}
   }
@@ -208,8 +141,7 @@ async function main() {
     process.exit(1);
   }
 
-  mkdirSync(join(PROFILE_DIR, 'Default'), { recursive: true });
-  seedClipboardPermissions();
+  mkdirSync(PROFILE_DIR, { recursive: true });
 
   console.log(`Launching GreedySearch Chrome on port ${PORT}...`);
   const proc = spawn(CHROME_EXE, CHROME_FLAGS, {
@@ -220,16 +152,15 @@ async function main() {
   proc.unref();
   writeFileSync(PID_FILE, String(proc.pid));
 
-  // Wait for Chrome HTTP endpoint, build DevToolsActivePort file, redirect cdp.mjs
+  // Wait for Chrome HTTP endpoint and build the dedicated DevToolsActivePort file
   const portFileReady = await writePortFile();
   if (!portFileReady) {
     console.error('Chrome did not become ready within 15s.');
     process.exit(1);
   }
-  redirectCdpToGreedySearch();
 
   console.log(`Ready. No more "Allow remote debugging?" dialogs.`);
-  console.log(`Run "node launch.mjs --kill" when done to restore your main Chrome's CDP.`);
+  console.log('GreedySearch now uses its own isolated DevToolsActivePort file.');
 }
 
 main();

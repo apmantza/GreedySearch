@@ -1,0 +1,19 @@
+{
+  "query": "who is the creator of rust",
+  "url": "https://gemini.google.com/app/3d0767b158d14346",
+  "answer": "Rust was originally designed and created by **Graydon Hoare** as a personal project while he was working at Mozilla in 2006. \n\nMozilla began officially sponsoring the project in 2009, as they saw its potential to build a more secure and efficient web browser engine (which eventually became the…",
+  "sources": [
+    {
+      "url": "https://one.google.com/ai",
+      "title": "Subscriptions"
+    },
+    {
+      "url": "https://workspace.google.com/solutions/ai/?utm_source=geminiforbusiness&utm_medium=et&utm_campaign=gemini-page-crosslink&utm_term=-&utm_content=forbusiness-2025Q3",
+      "title": "For Business"
+    },
+    {
+      "url": "https://support.google.com/gemini?p=privacy_notice",
+      "title": "Your privacy & Gemini"
+    }
+  ]
+}

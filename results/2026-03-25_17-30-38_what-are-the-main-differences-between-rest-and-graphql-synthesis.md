@@ -1,0 +1,1 @@
+The main difference lies in data fetching and endpoint architecture: REST uses multiple fixed endpoints where the server defines the response structure, while GraphQL uses a single endpoint that allows clients to request exactly the data they need, eliminating over-fetching and under-fetching.
