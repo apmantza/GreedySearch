@@ -1,0 +1,46 @@
+{
+	"name": "@apmantza/greedysearch-pi",
+	"version": "1.7.4",
+	"description": "Pi extension: multi-engine AI search (Perplexity, Bing Copilot, Google AI) via browser automation -- NO API KEYS needed. Extracts answers with sources, optional Gemini synthesis. Grounded AI answers from real browser interactions.",
+	"type": "module",
+	"keywords": [
+		"pi-package"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/apmantza/GreedySearch-pi.git"
+	},
+	"author": "Apostolos Mantzaris",
+	"license": "MIT",
+	"scripts": {
+		"test": "./test.sh",
+		"test:quick": "./test.sh quick",
+		"test:smoke": "./test.sh smoke"
+	},
+	"files": [
+		"index.ts",
+		"bin/",
+		"src/",
+		"skills/",
+		"extractors/",
+		"CHANGELOG.md",
+		"README.md"
+	],
+	"pi": {
+		"extensions": [
+			"./index.ts"
+		],
+		"skills": [
+			"./skills"
+		]
+	},
+	"dependencies": {
+		"jsdom": "^24.0.0",
+		"@mozilla/readability": "^0.5.0",
+		"turndown": "^7.1.2"
+	},
+	"peerDependencies": {
+		"@mariozechner/pi-coding-agent": "*",
+		"@sinclair/typebox": "*"
+	}
+}

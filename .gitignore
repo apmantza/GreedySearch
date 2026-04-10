@@ -1,16 +1,33 @@
-# Internal planning docs
-vision.md
-
-# Claude Code project settings
+node_modules/
+results/
+.pi-lens/
 .claude/
 
-# OS
+# Compiled JavaScript files (TypeScript source is what matters)
+*.mjs
+
+# BUT: keep extractor source files (they're native .mjs, not compiled)
+!extractors/*.mjs
+!bin/*.mjs
+!test.mjs
+!src/**/*.mjs
+!test/**/*.mjs
+
+# OS files
 .DS_Store
 Thumbs.db
 
-# Editor
-.vscode/
-.idea/
-
 # Logs
 *.log
+npm-debug.log*
+
+# Temp files
+*.tmp
+*.temp
+
+# Analysis documents (local only)
+FEATURES.md
+assessment.md
+shortlist.md
+docs/plans/
+nul

@@ -11,9 +11,9 @@ const CONSENT_JS = `
   var ot = document.querySelector('#onetrust-accept-btn-handler, .onetrust-accept-btn-handler');
   if (ot) { ot.click(); return 'onetrust'; }
 
-// generic "accept all" / "agree" buttons
+  // Generic "accept all" / "agree" buttons
   var btns = Array.from(document.querySelectorAll('button, a[role=button]'));
-  var accept = btns.find(b => /(accept all|accept cookies|agree|got it|allow all|allow cookies)/i.test(b.innerText?.trim()));
+  var accept = btns.find(b => /^(accept all|accept cookies|agree|i agree|got it|allow all|allow cookies)$/i.test(b.innerText?.trim()));
   if (accept) { accept.click(); return 'generic:' + accept.innerText.trim(); }
 
   return null;
@@ -32,7 +32,7 @@ const VERIFY_DETECT_JS = `
   if (url.includes('login.microsoftonline.com') || url.includes('login.live.com') || url.includes('account.microsoft.com')) {
     // Look for "Verify" or "Continue" buttons on Microsoft auth pages
     var msBtns = Array.from(document.querySelectorAll('button, input[type=submit], a'));
-    var msVerify = msBtns.find(b => /(verify|continue|next)/i.test(b.innerText?.trim() || b.value || ''));
+    var msVerify = msBtns.find(b => /verify|continue|next/i.test(b.innerText?.trim() || b.value || ''));
     if (msVerify) { msVerify.click(); return 'clicked-ms-verify:' + (msVerify.innerText?.trim() || msVerify.value); }
   }
   
@@ -44,7 +44,7 @@ const VERIFY_DETECT_JS = `
     if (modal) {
       // Find any actionable button in the modal
       var modalBtns = Array.from(modal.querySelectorAll('button, a[role="button"], input[type="submit"]'));
-      var actionBtn = modalBtns.find(b => /(continue|verify|submit|next|agree|accept|got it|human|robot)/i.test(b.innerText?.trim() || b.value || ''));
+      var actionBtn = modalBtns.find(b => /^(continue|verify|submit|next|i agree|accept|got it)$/i.test(b.innerText?.trim() || b.value || ''));
       if (actionBtn) { actionBtn.click(); return 'clicked-copilot-modal:' + actionBtn.innerText.trim(); }
     }
     
@@ -95,15 +95,19 @@ const VERIFY_DETECT_JS = `
   // --- Microsoft "I am human" / "Verify" challenge ---
   // Microsoft uses various verification UIs
   var msHumanBtn = document.querySelector('button[id*="i0"], button[id*="id__"]');
-  if (msHumanBtn && /(verify|human|robot|continue)/i.test(msHumanBtn.innerText?.trim())) {
+  if (msHumanBtn && /verify|human|robot|continue/i.test(msHumanBtn.innerText?.trim())) {
     msHumanBtn.click();
     return 'clicked-ms-human:' + msHumanBtn.innerText.trim();
   }
   
   // --- Generic verification buttons (catch-all) ---
   var btns = Array.from(document.querySelectorAll('button, input[type=submit], a[role=button]'));
-  var verify = btns.find(b => /(verify|human|robot|continue|proceed)/i.test(b.innerText?.trim() || b.value || ''));
-  if (verify && !document.querySelector('iframe[src*="recaptcha"]')) {
+  var verify = btns.find(b => {
+    var t = (b.innerText?.trim() || b.value || '').toLowerCase();
+    return (t.includes('verify') || t.includes('human') || t.includes('robot') || t.includes('continue') || t.includes('proceed')) &&
+           !t.includes('verified') && !document.querySelector('iframe[src*="recaptcha"]');
+  });
+  if (verify) {
     verify.click();
     return 'clicked-verify:' + (verify.innerText?.trim() || verify.value);
   }
@@ -131,7 +135,10 @@ const VERIFY_RETRY_JS = `
   
   // Try clicking any verify/continue button again
   var btns = Array.from(document.querySelectorAll('button, input[type=submit], a[role=button]'));
-  var btn = btns.find(b => /(verify|continue|next|human|robot|submit)/i.test(b.innerText?.trim() || b.value || ''));
+  var btn = btns.find(b => {
+    var t = (b.innerText?.trim() || b.value || '').toLowerCase();
+    return t.includes('verify') || t.includes('human') || t.includes('robot') || t.includes('continue') || t.includes('next') || t.includes('submit');
+  });
   if (btn) { btn.click(); return 'clicked:' + (btn.innerText?.trim() || btn.value); }
   
   // Try Turnstile checkbox
@@ -150,10 +157,10 @@ const VERIFY_RETRY_JS = `
 `;
 
 export async function dismissConsent(tab, cdp) {
-  const result = await cdp(['eval', tab, CONSENT_JS]).catch(() => null);
-  if (result && result !== 'null') {
-    await new Promise(r => setTimeout(r, 1500));
-  }
+	const result = await cdp(["eval", tab, CONSENT_JS]).catch(() => null);
+	if (result && result !== "null") {
+		await new Promise((r) => setTimeout(r, 1500));
+	}
 }
 
 // Get iframe bounding box for coordinate-based clicking (for cross-origin Turnstile)
@@ -169,80 +176,98 @@ const GET_IFRAME_CENTER_JS = `
 
 // Returns 'clear' | 'clicked' | 'needs-human'
 export async function handleVerification(tab, cdp, waitMs = 60000) {
-  const result = await cdp(['eval', tab, VERIFY_DETECT_JS]).catch(() => null);
+	const result = await cdp(["eval", tab, VERIFY_DETECT_JS]).catch(() => null);
 
-  if (!result || result === 'null') return 'clear';
+	if (!result || result === "null") return "clear";
 
-  // Hard CAPTCHA page — wait for user to solve it manually
-  if (result === 'sorry-page') {
-    process.stderr.write(`[greedysearch] Google CAPTCHA detected — please solve it in the browser window (waiting up to ${Math.floor(waitMs / 1000)}s)...\n`);
-    const deadline = Date.now() + waitMs;
-    while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 2000));
-      const url = await cdp(['eval', tab, 'document.location.href']).catch(() => '');
-      if (!url.includes('/sorry/')) return 'cleared-by-user';
-    }
-    return 'needs-human';
-  }
+	// Hard CAPTCHA page — wait for user to solve it manually
+	if (result === "sorry-page") {
+		process.stderr.write(
+			`[greedysearch] Google CAPTCHA detected — please solve it in the browser window (waiting up to ${Math.floor(waitMs / 1000)}s)...\n`,
+		);
+		const deadline = Date.now() + waitMs;
+		while (Date.now() < deadline) {
+			await new Promise((r) => setTimeout(r, 2000));
+			const url = await cdp(["eval", tab, "document.location.href"]).catch(
+				() => "",
+			);
+			if (!url.includes("/sorry/")) return "cleared-by-user";
+		}
+		return "needs-human";
+	}
 
-  // We clicked something — wait for page to update, then keep retrying
-  if (result.startsWith('clicked-')) {
-    process.stderr.write(`[greedysearch] Clicked verification: ${result}\n`);
-    await new Promise(r => setTimeout(r, 2000));
-    
-    // Keep checking if verification cleared, retry clicking for up to waitMs
-    const deadline = Date.now() + waitMs;
-    while (Date.now() < deadline) {
-      const retryResult = await cdp(['eval', tab, VERIFY_RETRY_JS]).catch(() => null);
-      
-      if (retryResult === 'cleared' || !retryResult || retryResult === 'null') {
-        process.stderr.write(`[greedysearch] Verification cleared.\n`);
-        await new Promise(r => setTimeout(r, 1000));
-        return 'clicked';
-      }
-      
-      if (retryResult.startsWith('clicked:')) {
-        process.stderr.write(`[greedysearch] Retrying verification click...\n`);
-        await new Promise(r => setTimeout(r, 2000));
-      }
-      
-      // If verification is stuck, try clicking the Turnstile iframe by coordinates
-      const iframeCenter = await cdp(['eval', tab, GET_IFRAME_CENTER_JS]).catch(() => null);
-      if (iframeCenter && iframeCenter !== 'null') {
-        try {
-          const { x, y } = JSON.parse(iframeCenter);
-          process.stderr.write(`[greedysearch] Trying coordinate click on Turnstile iframe at (${x}, ${y})...\n`);
-          await cdp(['clickxy', tab, String(x), String(y)]);
-          await new Promise(r => setTimeout(r, 3000));
-        } catch {}
-      }
-      
-      await new Promise(r => setTimeout(r, 1500));
-    }
-    
-    // Still stuck — might need user intervention
-    process.stderr.write(`[greedysearch] Verification may require manual intervention.\n`);
-    return 'needs-human';
-  }
+	// We clicked something — wait for page to update, then keep retrying
+	if (result.startsWith("clicked-")) {
+		process.stderr.write(`[greedysearch] Clicked verification: ${result}\n`);
+		await new Promise((r) => setTimeout(r, 2000));
 
-  // Detection didn't find anything initially, but check for Turnstile iframe with coordinates
-  if (result === 'null' || !result) {
-    const iframeCenter = await cdp(['eval', tab, GET_IFRAME_CENTER_JS]).catch(() => null);
-    if (iframeCenter && iframeCenter !== 'null') {
-      process.stderr.write(`[greedysearch] Found Turnstile iframe, attempting coordinate click...\n`);
-      try {
-        const { x, y } = JSON.parse(iframeCenter);
-        await cdp(['clickxy', tab, String(x), String(y)]);
-        await new Promise(r => setTimeout(r, 3000));
-        
-        // Check if it worked
-        const cleared = await cdp(['eval', tab, VERIFY_RETRY_JS]).catch(() => null);
-        if (cleared === 'cleared' || cleared === 'null') {
-          return 'clicked';
-        }
-      } catch {}
-    }
-  }
+		// Keep checking if verification cleared, retry clicking for up to waitMs
+		const deadline = Date.now() + waitMs;
+		while (Date.now() < deadline) {
+			const retryResult = await cdp(["eval", tab, VERIFY_RETRY_JS]).catch(
+				() => null,
+			);
 
-  return 'clear';
+			if (retryResult === "cleared" || !retryResult || retryResult === "null") {
+				process.stderr.write(`[greedysearch] Verification cleared.\n`);
+				await new Promise((r) => setTimeout(r, 1000));
+				return "clicked";
+			}
+
+			if (retryResult.startsWith("clicked:")) {
+				process.stderr.write(`[greedysearch] Retrying verification click...\n`);
+				await new Promise((r) => setTimeout(r, 2000));
+			}
+
+			// If verification is stuck, try clicking the Turnstile iframe by coordinates
+			const iframeCenter = await cdp(["eval", tab, GET_IFRAME_CENTER_JS]).catch(
+				() => null,
+			);
+			if (iframeCenter && iframeCenter !== "null") {
+				try {
+					const { x, y } = JSON.parse(iframeCenter);
+					process.stderr.write(
+						`[greedysearch] Trying coordinate click on Turnstile iframe at (${x}, ${y})...\n`,
+					);
+					await cdp(["clickxy", tab, String(x), String(y)]);
+					await new Promise((r) => setTimeout(r, 3000));
+				} catch {}
+			}
+
+			await new Promise((r) => setTimeout(r, 1500));
+		}
+
+		// Still stuck — might need user intervention
+		process.stderr.write(
+			`[greedysearch] Verification may require manual intervention.\n`,
+		);
+		return "needs-human";
+	}
+
+	// Detection didn't find anything initially, but check for Turnstile iframe with coordinates
+	if (result === "null" || !result) {
+		const iframeCenter = await cdp(["eval", tab, GET_IFRAME_CENTER_JS]).catch(
+			() => null,
+		);
+		if (iframeCenter && iframeCenter !== "null") {
+			process.stderr.write(
+				`[greedysearch] Found Turnstile iframe, attempting coordinate click...\n`,
+			);
+			try {
+				const { x, y } = JSON.parse(iframeCenter);
+				await cdp(["clickxy", tab, String(x), String(y)]);
+				await new Promise((r) => setTimeout(r, 3000));
+
+				// Check if it worked
+				const cleared = await cdp(["eval", tab, VERIFY_RETRY_JS]).catch(
+					() => null,
+				);
+				if (cleared === "cleared" || cleared === "null") {
+					return "clicked";
+				}
+			} catch {}
+		}
+	}
+
+	return "clear";
 }
