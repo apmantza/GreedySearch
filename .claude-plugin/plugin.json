@@ -1,6 +1,6 @@
 {
   "name": "greedysearch",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "description": "Multi-engine AI web search — Perplexity, Bing Copilot, and Google AI in parallel with Gemini synthesis. No API keys needed.",
   "author": {
     "name": "Apostolos Mantzaris",
