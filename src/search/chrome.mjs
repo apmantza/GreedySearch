@@ -1,9 +1,12 @@
 // src/search/chrome.mjs — Chrome launch, probe, port file management, and CDP wrapper
 //
 // Extracted from search.mjs to reduce file complexity.
-// Also used by coding-task.mjs (via import).
 //
 // cdp() is re-exported from extractors/common.mjs to avoid duplication.
+//
+// Headless cleanup: when GREEDY_SEARCH_HEADLESS=1, idle Chrome is auto-killed
+// after GREEDY_SEARCH_IDLE_TIMEOUT_MINUTES (default 5). Only the tracked
+// headless instance (PID file + port 9222) is killed — never the main session.
 
 import { spawn } from "node:child_process";
 import {
@@ -14,13 +17,112 @@ import {
 	writeFileSync,
 } from "node:fs";
 import http from "node:http";
+import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
-import { cdp as _cdp } from "../../extractors/common.mjs";
+import {
+	cdp as _cdp,
+	injectHeadlessStealth,
+} from "../../extractors/common.mjs";
 import { ACTIVE_PORT_FILE, GREEDY_PORT, PAGES_CACHE } from "./constants.mjs";
 
 const __dir =
 	import.meta.dirname ||
 	new URL(".", import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1");
+
+// ─── Headless idle cleanup ─────────────────────────────────────────────
+
+const _tmp = tmpdir().replaceAll("\\", "/");
+const PID_FILE = `${_tmp}/greedysearch-chrome.pid`;
+const ACTIVITY_FILE = `${_tmp}/greedysearch-chrome-last-activity`;
+const IDLE_TIMEOUT_MINUTES =
+	Number.parseInt(process.env.GREEDY_SEARCH_IDLE_TIMEOUT_MINUTES || "5", 10) ||
+	5;
+
+/** Record that the headless Chrome was just used / is active right now */
+export function touchActivity() {
+	// Always track activity — headless is the default
+	try {
+		writeFileSync(ACTIVITY_FILE, String(Date.now()), "utf8");
+	} catch {}
+}
+
+/**
+ * Kill ONLY the tracked headless Chrome (identified by PID file + port 9222).
+ * Never touches the user's main Chrome session (which runs on different ports).
+ */
+export async function killHeadlessChrome() {
+	if (!existsSync(PID_FILE)) return false;
+
+	const pidRaw = readFileSync(PID_FILE, "utf8").trim();
+	const pid = Number.parseInt(pidRaw, 10);
+	if (!pid) return false;
+
+	// Verify this PID is actually the headless Chrome on port 9222
+	const ready = await probeGreedyChrome(500);
+	if (!ready) {
+		// Port not responding — stale PID file
+		try {
+			unlinkSync(PID_FILE);
+		} catch {}
+		try {
+			unlinkSync(ACTIVITY_FILE);
+		} catch {}
+		return false;
+	}
+
+	try {
+		if (platform() === "win32") {
+			const { execSync } = await import("node:child_process");
+			execSync(`taskkill //F //PID ${pid}`, { stdio: "ignore" });
+		} else {
+			process.kill(pid, "SIGTERM");
+		}
+		// Clean up tracking files
+		try {
+			unlinkSync(PID_FILE);
+		} catch {}
+		try {
+			unlinkSync(ACTIVITY_FILE);
+		} catch {}
+		process.stderr.write(
+			`[greedysearch] Killed idle headless Chrome (pid ${pid}) after ${IDLE_TIMEOUT_MINUTES}min inactivity.\n`,
+		);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Check if headless Chrome has been idle too long and kill if so.
+ * Returns true if Chrome was killed (caller should re-launch).
+ */
+export async function checkAndKillIdle() {
+	if (process.env.GREEDY_SEARCH_HEADLESS !== "1") return false;
+
+	if (!existsSync(ACTIVITY_FILE)) {
+		// No activity file yet — create one
+		touchActivity();
+		return false;
+	}
+
+	try {
+		const lastActivity = Number.parseInt(
+			readFileSync(ACTIVITY_FILE, "utf8").trim(),
+			10,
+		);
+		if (!lastActivity) return false;
+
+		const idleMs = Date.now() - lastActivity;
+		const idleMinutes = idleMs / 60000;
+
+		if (idleMinutes >= IDLE_TIMEOUT_MINUTES) {
+			return killHeadlessChrome();
+		}
+	} catch {}
+
+	return false;
+}
 
 /** Re-export cdp() from the canonical location in extractors/common.mjs */
 export const cdp = _cdp;
@@ -41,6 +143,12 @@ export async function openNewTab() {
 		'{"url":"about:blank"}',
 	]);
 	const { targetId } = JSON.parse(raw);
+	// Inject stealth patches in headless mode (default: on)
+	// Set GREEDY_SEARCH_VISIBLE=1 to disable
+	if (process.env.GREEDY_SEARCH_VISIBLE !== "1") {
+		const tid = targetId.slice(0, 8);
+		injectHeadlessStealth(tid).catch(() => {});
+	}
 	return targetId;
 }
 
@@ -204,7 +312,10 @@ export async function refreshPortFile() {
 }
 
 export async function ensureChrome() {
-	const ready = await probeGreedyChrome();
+	// ── Headless idle cleanup: kill if timed out ──
+	const wasKilled = await checkAndKillIdle();
+
+	const ready = wasKilled ? false : await probeGreedyChrome();
 	if (ready) {
 		// Chrome already running — refresh the port file
 		await refreshPortFile();
@@ -212,14 +323,14 @@ export async function ensureChrome() {
 		process.stderr.write(
 			`GreedySearch Chrome not running on port ${GREEDY_PORT} — auto-launching...\n`,
 		);
+		const launchArgs = [join(__dir, "..", "..", "bin", "launch.mjs")];
+		// Headless is the default unless GREEDY_SEARCH_VISIBLE=1
+		if (process.env.GREEDY_SEARCH_VISIBLE !== "1")
+			launchArgs.push("--headless");
 		await new Promise((resolve, reject) => {
-			const proc = spawn(
-				"node",
-				[join(__dir, "..", "..", "bin", "launch.mjs")],
-				{
-					stdio: ["ignore", process.stderr, process.stderr],
-				},
-			);
+			const proc = spawn("node", launchArgs, {
+				stdio: ["ignore", process.stderr, process.stderr],
+			});
 			proc.on("close", (code) =>
 				code === 0 ? resolve() : reject(new Error("launch.mjs failed")),
 			);
