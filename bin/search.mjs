@@ -31,6 +31,7 @@ import {
 	closeTabs,
 	ensureChrome,
 	openNewTab,
+	touchActivity,
 } from "../src/search/chrome.mjs";
 import { ALL_ENGINES, ENGINES } from "../src/search/constants.mjs";
 import { runExtractor } from "../src/search/engines.mjs";
@@ -77,11 +78,12 @@ async function main() {
 				"  --deep-research     Deprecated: source fetching is now default",
 				"  --fetch-top-source  Fetch content from top source",
 				"  --inline            Output JSON to stdout (for piping)",
+				"  --headless          Run Chrome in headless mode (default: on)",
 				"  --locale <lang>     Force results language (en, de, fr, etc.)",
 				"",
 				"Environment:",
+				"  GREEDY_SEARCH_VISIBLE   Set to 1 to show Chrome window (disables headless)",
 				"  GREEDY_SEARCH_LOCALE    Default locale (default: en)",
-				"  GREEDY_SEARCH_VISIBLE   Set to 1 to show Chrome window",
 				"",
 				"Examples:",
 				'  node search.mjs all "Node.js streams"           # Default: sources + synthesis',
@@ -93,6 +95,9 @@ async function main() {
 	}
 
 	await ensureChrome();
+
+	// Track activity for headless idle timeout
+	touchActivity();
 
 	// Depth modes: fast (no synthesis/fetch), standard (synthesis+fetch 5 sources)
 	const depthIdx = args.indexOf("--depth");
@@ -130,6 +135,9 @@ async function main() {
 	const short = !full;
 	const fetchSource = args.includes("--fetch-top-source");
 	const inline = args.includes("--inline");
+	// Headless is the default — only disable if GREEDY_SEARCH_VISIBLE=1
+	if (process.env.GREEDY_SEARCH_VISIBLE !== "1")
+		process.env.GREEDY_SEARCH_HEADLESS = "1";
 	const outIdx = args.indexOf("--out");
 	const outFile = outIdx === -1 ? null : args[outIdx + 1];
 
@@ -156,6 +164,7 @@ async function main() {
 			a !== "--deep-research" &&
 			a !== "--deep" &&
 			a !== "--inline" &&
+			a !== "--headless" &&
 			a !== "--depth" &&
 			a !== "--out" &&
 			a !== "--help" &&
@@ -299,9 +308,12 @@ function pickTopSource(out) {
 /**
  * Minimize Chrome window via CDP after search completes.
  * Called at the end of search to keep window minimized.
+ * Skipped in headless mode (no window to minimize).
  */
 async function minimizeChrome() {
 	if (process.env.GREEDY_SEARCH_VISIBLE === "1") return;
+	// In headless mode (default), there's no window to minimize
+	if (process.env.GREEDY_SEARCH_HEADLESS === "1") return;
 
 	try {
 		const http = await import("node:http");
@@ -381,6 +393,8 @@ async function minimizeChrome() {
 }
 
 main().finally(async () => {
+	// Touch activity timestamp for headless idle timeout
+	touchActivity();
 	// Ensure window is minimized after search completes
 	await minimizeChrome();
 	// Give minimize time to complete before exit
