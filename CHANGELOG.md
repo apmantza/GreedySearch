@@ -1,5 +1,33 @@
 # Changelog
 
+## [Unreleased]
+
+### Performance
+
+- **Hard per-engine timeouts** (`bin/search.mjs`) — Fast mode: 22s per engine. Standard/deep: 35s per engine. Slow engines are skipped instead of stalling the whole batch. Previously a single slow engine could push `all` searches to 60–90s.
+- **Parallel tab creation** (`bin/search.mjs`, `src/search/chrome.mjs`) — All engine tabs open simultaneously instead of sequential 300ms staggered delays. Tabs are pre-seeded to each engine's homepage so extractors skip redundant initial navigation.
+- **Reduced settle delays** (`extractors/common.mjs`) — `postNav` 1500→800ms, `postNavSlow` 2000→1200ms, `postClick`/`postType` 400→300ms, `afterVerify` 3000→1500ms. Safe because tabs now load the target domain before the extractor even starts.
+- **Higher source-fetch concurrency** (`src/search/constants.mjs`) — Default `GREEDY_FETCH_CONCURRENCY` raised from 2 → 4.
+- **Faster HTTP timeouts** (`src/search/fetch-source.mjs`) — HTTP fetch timeout 15s → 10s, browser fallback settle 1500ms → 800ms.
+- **Non-blocking cleanup** (`bin/search.mjs`) — Removed the 1500ms hard sleep at process exit; `minimizeChrome` now fire-and-forget.
+- **Domain-aware navigation skip** (`extractors/bing-copilot.mjs`, `extractors/perplexity.mjs`, `extractors/google-ai.mjs`) — When a tab is already on the engine's domain (pre-seeded by orchestrator), skip the redundant `cdp nav` call and settle delay.
+- **Skip Cloudflare recovery in fast mode** (`bin/search.mjs`) — The visible-Chrome retry loop (killing headless, launching visible, re-running blocked engines, switching back) is bypassed in `--fast` mode. This alone saves 15–25s when engines are blocked.
+
+### Anti-Bot Detection Hardening (Anti-CDP Evasion)
+
+- **Runtime.enable evasion** (`bin/cdp.mjs`) — The primary CDP detection vector (Cloudflare/DataDome watch for `Runtime.consoleAPICalled` timing) has been eliminated. All `Runtime.evaluate` calls now use an explicit `contextId` captured via brief `Runtime.enable` → `Runtime.disable` at daemon startup (~100ms window). No persistent Runtime domain enable for the session. See: rebrowser.net / DataDome research.
+- **Stale PID / ghost Chrome cleanup** (`src/search/chrome.mjs`) — `killChrome()` now uses port-based process detection via `netstat`/`lsof` instead of relying solely on the PID file. Handles ghost processes that hold port 9222 after the tracked PID dies. Old `killHeadlessChrome` kept as backward-compat alias.
+- **Idle cleanup for both modes** (`src/search/chrome.mjs`) — `checkAndKillIdle()` no longer gates on `GREEDY_SEARCH_HEADLESS=1`. Both headless and visible Chrome auto-kill after idle timeout. Disable with `GREEDY_SEARCH_IDLE_TIMEOUT_MINUTES=0`.
+- **`--disable-blink-features=AutomationControlled` for visible mode** (`bin/launch.mjs`, `bin/gschrome.mjs`) — Previously headless-only. The flag and `--window-size` now apply to both modes, suppressing `navigator.webdriver` in visible Chrome too.
+- **Stealth injection for visible mode** (`src/search/chrome.mjs`, `extractors/common.mjs`) — Canvas noise, plugin spoofing, `window.chrome.runtime`, and console safening now inject on both headless and visible tabs.
+- **Client Hints consistency** (`src/fetcher.mjs`) — Added `Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform` headers to `DEFAULT_HEADERS`, matching the Chrome 122 user-agent. Inconsistency between UA and Client Hints is a strong bot signal.
+- **Perplexity Cloudflare verification** (`extractors/perplexity.mjs`) — Added `handleVerification` call after navigation. Perplexity was the only engine missing Cloudflare challenge handling (Bing, Gemini, Google AI already had it).
+- **Chrome TLS fetch fallback** (`src/search/fetch-source.mjs`) — New `fetchSourceViaChrome()` uses `Network.loadNetworkResource` (Chrome 124+) to fetch with authentic Chrome TLS/JA3+HTTP/2 fingerprints when Node.js HTTP fails. Zero navigation overhead.
+
+### Added
+
+- **`bin/gschrome.mjs`** — Standalone Chrome lifecycle manager: `launch-headless`, `launch-visible`, `kill`, `status`. Port-based PID detection, forces mode switches, writes `DevToolsActivePort` for CDP.
+
 ## [1.8.6] — 2026-05-04
 
 ### Bing Copilot: Headless Cloudflare Recovery

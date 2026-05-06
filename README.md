@@ -1,67 +1,149 @@
-# GreedySearch — Claude Code Plugin
+# GreedySearch for Pi
 
-Multi-engine AI web search for Claude Code. Runs Perplexity, Bing Copilot, and Google AI in parallel via browser automation — synthesized answers, not just links. No API keys needed.
+![GreedySearch](docs/banner.svg)
+
+Multi-engine AI web search for Pi via browser automation.
+
+- No API keys
+- Real browser results (Perplexity, Bing Copilot, Google AI)
+- Optional Gemini synthesis with source grounding
+- Chrome runs headless by default — no window, purely background
 
 ## Install
 
 ```bash
-claude plugin install github:apmantza/GreedySearch-claude
+pi install npm:@apmantza/greedysearch-pi
 ```
 
-Then restart Claude Code.
+Or from git:
 
-## What it does
-
-Adds a `greedy_search` skill that Claude invokes automatically when questions touch post-training topics:
-
-- Library/framework APIs and recent changes
-- Error messages and stack traces
-- Dependency selection
-- Architecture research
+```bash
+pi install git:github.com/apmantza/GreedySearch-pi
+```
 
 ## Tools
 
-### `greedy_search`
+- `greedy_search` — multi-engine AI web search
+- `websearch` — lightweight DuckDuckGo/Brave search (via pi-webaio)
+- `webfetch` / `webpull` — page fetching and site crawling (via pi-webaio)
 
-```
-greedy_search({ query: "React 19 changes", depth: "standard" })
-```
+## Quick usage
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `query` | string | required | Search question |
-| `engine` | string | `"all"` | `all`, `perplexity`, `bing`, `google`, `gemini` |
-| `depth` | string | `"standard"` | `fast`, `standard`, `deep` |
-| `fullAnswer` | boolean | `false` | Full answer vs ~300 char summary |
-
-| Depth | Engines | Synthesis | Source Fetch | Time |
-|-------|---------|-----------|--------------|------|
-| `fast` | 1 | — | — | 15-30s |
-| `standard` | 3 | Gemini | — | 30-90s |
-| `deep` | 3 | Gemini | top 5 sources | 60-180s |
-
-### `coding_task`
-
-Second opinion from Gemini or Copilot on hard coding problems.
-
-```
-coding_task({ task: "debug this race condition", mode: "debug", engine: "gemini" })
+```js
+greedy_search({ query: "React 19 changes" });
+greedy_search({ query: "Prisma vs Drizzle", engine: "all", depth: "fast" });
+greedy_search({
+  query: "Best auth architecture 2026",
+  engine: "all",
+  depth: "deep",
+});
+// Headless is the default — no window. To see the browser:
+// Set GREEDY_SEARCH_VISIBLE=1 before launching Pi
 ```
 
-Modes: `debug`, `plan`, `review`, `test`, `code`
+## Parameters (`greedy_search`)
 
-## Prerequisites
+- `query` (required)
+- `engine`: `all` (default), `perplexity`, `bing`, `google`, `gemini`
+- `depth`: `standard` (default), `fast`, `deep`
+- `fullAnswer`: return full single-engine output instead of preview
+- `headless`: set to `false` to show Chrome window (default: `true`)
 
-- Node.js 18+
-- Google Chrome (detected automatically — launches on first use)
+## Environment variables
 
-## How it works
+| Variable                             | Default       | Description                                               |
+| ------------------------------------ | ------------- | --------------------------------------------------------- |
+| `GREEDY_SEARCH_VISIBLE`              | (unset)       | Set to `1` to show Chrome window instead of headless      |
+| `GREEDY_SEARCH_IDLE_TIMEOUT_MINUTES` | `5`           | Minutes of inactivity before auto-killing headless Chrome |
+| `GREEDY_SEARCH_LOCALE`               | `en`          | Default result language (en, de, fr, es, ja, etc.)        |
+| `CHROME_PATH`                        | auto-detected | Path to Chrome/Chromium executable                        |
 
-Browser automation via Chrome DevTools Protocol. Each search opens a fresh tab per engine, submits the query, waits for the AI answer to stream, extracts it via clipboard interception, then closes the tab. No fragile DOM scraping.
+## Depth modes
 
-## Source repo
+- `fast` - quickest, no synthesis/source fetching
+- `standard` - balanced default for `engine: "all"` (synthesis + fetched sources)
+- `deep` - strongest grounding and confidence metadata
 
-The Pi extension lives at [GreedySearch-pi](https://github.com/apmantza/GreedySearch-pi). This repo is mirrored automatically on every release.
+## Runtime commands
+
+````bash
+# Headless (default, no GUI)
+node ~/.pi/agent/git/GreedySearch-pi/bin/launch.mjs
+node ~/.pi/agent/git/GreedySearch-pi/bin/launch.mjs --status
+node ~/.pi/agent/git/GreedySearch-pi/bin/launch.mjs --kill
+
+# Visible (show browser window — useful for one-time Cloudflare clearance)
+node ~/.pi/agent/git/GreedySearch-pi/bin/launch-visible.mjs
+node ~/.pi/agent/git/GreedySearch-pi/bin/launch-visible.mjs --kill
+
+# Chrome auto-cleaned after 5 min idle (prevents OOM)
+# Override: GREEDY_SEARCH_IDLE_TIMEOUT_MINUTES=10
+
+## Requirements
+
+- Chrome
+- Node.js 20.11.0+ (22+ recommended)
+
+## Known engine quirks
+
+### Bing Copilot
+
+Bing Copilot detects headless Chrome and sandboxes all AI responses inside nested iframes (`copilot.microsoft.com` → `copilot.fun` → `blob:`). In this mode the copy button is hidden and the Cloudflare Turnstile challenge blocks content delivery. The clipboard-based extraction cannot work.
+
+**Auto-recovery:** When Bing fails with any extraction error (clipboard, verification, Cloudflare), GreedySearch automatically switches to **visible Chrome**, retries the search, and caches Cloudflare clearance cookies in the Chrome profile. You may need to solve the Cloudflare challenge **once** manually when the visible Chrome window appears. After that, all subsequent headless searches bypass the challenge — the cookies persist in the profile.
+
+If you prefer to skip the auto-recovery delay, launch visible Chrome ahead of time:
+
+```bash
+node ~/.pi/agent/git/GreedySearch-pi/bin/launch-visible.mjs
+````
+
+## Anti-detection
+
+Headless Chrome auto-injects stealth patches before any page JavaScript runs:
+
+- `navigator.webdriver` hidden, plugins/languages faked, `window.chrome` shimmed
+- WebGL vendor spoofed (Intel Iris), realistic hardware concurrency / memory
+- CDP automation markers deleted, `requestAnimationFrame` kept alive
+- Human-like click simulation with coordinate jitter and variable delays
+
+This bypasses casual bot detection (basic `navigator.webdriver` checks) but does not defeat commercial anti-bot services (DataDome, PerimeterX, Kasada). **Bing Copilot specifically detects headless and sandboxes responses behind Cloudflare Turnstile** — see [Known engine quirks](#known-engine-quirks) for the auto-recovery mechanism.
+
+When using `depth: "standard"` or `depth: "deep"`, source content is fetched and synthesized:
+
+- **Reddit** — Uses Reddit's public `.json` API for posts and comments (no scraping)
+- **GitHub** — Uses GitHub REST API for repos, READMEs, and file trees
+- **General web** — Mozilla Readability extraction with browser fallback for bot-blocked pages
+- **Metadata** — title, author/byline, site name, publish date, language, excerpt
+
+## Project layout
+
+- `bin/` — runtime CLIs (`search.mjs`, `launch.mjs`, `launch-visible.mjs`, `visible.mjs`, `cdp.mjs`)
+- `extractors/` — engine-specific automation + stealth/consent handling
+- `src/` — search pipeline, chrome management, source fetching, formatting
+- `skills/` — Pi skill metadata
+
+## Testing
+
+Cross-platform test runner (Windows + Unix):
+
+```bash
+npm test              # run all tests
+npm run test:quick    # skip slow tests
+npm run test:smoke    # basic health check
+```
+
+Full bash test suite (Unix only):
+
+```bash
+npm run test:bash           # comprehensive tests
+./test.sh parallel          # race condition tests
+./test.sh flags             # flag/option tests
+```
+
+## Changelog
+
+See `CHANGELOG.md`.
 
 ## License
 
